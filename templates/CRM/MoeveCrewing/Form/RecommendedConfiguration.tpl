@@ -71,6 +71,68 @@
     </details>
   {/if}
 
+  <h3>Crewing-Rollen zuordnen</h3>
+  <div class="help">
+    <p>
+      Aktivieren Sie ausschließlich die Rollen, die Möwe Crewing verwenden soll,
+      und ordnen Sie jeder Rolle genau ein Freigabe- und ein Mindestanzahl-Feld
+      aus der gewählten Veranstaltungsgruppe zu.
+    </p>
+    <p>
+      Wenn Sie oben die Rollen-Optionsgruppe oder die Veranstaltungsgruppe ändern,
+      speichern Sie zunächst die Basiszuordnung und laden Sie anschließend die Seite neu.
+    </p>
+  </div>
+
+  {$form.role_source_option_group_id.html}
+  {$form.role_source_event_group_id.html}
+
+  {if $roleMappingIsValid}
+    <div class="messages status no-popup">
+      <div class="icon inform-icon"></div>
+      <p><strong>Rollenzuordnung gültig:</strong> Alle verwendeten Rollen besitzen kompatible Bedarfsfelder.</p>
+    </div>
+  {else}
+    <div class="messages warning no-popup">
+      <div class="icon warning-icon"></div>
+      <p><strong>Rollenzuordnung noch nicht vollständig:</strong></p>
+      <ul>
+        {foreach from=$roleMappingErrors item=roleMappingError}
+          <li>{$roleMappingError|escape}</li>
+        {/foreach}
+      </ul>
+    </div>
+  {/if}
+
+  {if $roleRows}
+    <table class="selector row-highlight">
+      <thead>
+        <tr>
+          <th>Rolle</th>
+          <th>Verwenden</th>
+          <th>Freigabefeld</th>
+          <th>Mindestanzahl-Feld</th>
+        </tr>
+      </thead>
+      <tbody>
+        {foreach from=$roleRows item=roleRow}
+          {assign var=useElement value=$roleRow.useElement}
+          {assign var=enabledElement value=$roleRow.enabledElement}
+          {assign var=minimumElement value=$roleRow.minimumElement}
+          <tr>
+            <td>
+              <strong>{$roleRow.label|escape}</strong><br>
+              <small>{$roleRow.name|escape}</small>
+            </td>
+            <td>{$form.$useElement.html}</td>
+            <td>{$form.$enabledElement.html}</td>
+            <td>{$form.$minimumElement.html}</td>
+          </tr>
+        {/foreach}
+      </tbody>
+    </table>
+  {/if}
+
   <h3>Empfohlene Möwe-Crewing-Konfiguration</h3>
   <div class="help">
     <p>

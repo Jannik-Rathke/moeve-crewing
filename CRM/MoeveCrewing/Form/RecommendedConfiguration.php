@@ -28,6 +28,12 @@ class CRM_MoeveCrewing_Form_RecommendedConfiguration extends CRM_Core_Form {
     $this->assign('existingCount', 0);
     $this->assign('mappingIsValid', $formData['statusErrors'] === []);
     $this->assign('mappingStatusErrors', $formData['statusErrors']);
+    $this->assign('roleRows', $formData['roleRows']);
+    $this->assign(
+      'roleMappingIsValid',
+      $formData['roleMappingErrors'] === []
+    );
+    $this->assign('roleMappingErrors', $formData['roleMappingErrors']);
 
     $emptyOption = ['' => E::ts('- bitte auswählen -')];
 
@@ -80,11 +86,39 @@ class CRM_MoeveCrewing_Form_RecommendedConfiguration extends CRM_Core_Form {
       ['class' => 'crm-select2 huge']
     );
 
+    $this->add('hidden', 'role_source_option_group_id');
+    $this->add('hidden', 'role_source_event_group_id');
+
+    foreach ($formData['roleRows'] as $roleRow) {
+      $this->add(
+        'advcheckbox',
+        $roleRow['useElement'],
+        NULL,
+        E::ts('verwenden')
+      );
+      $this->add(
+        'select',
+        $roleRow['enabledElement'],
+        NULL,
+        $emptyOption + $formData['roleEnabledFields'],
+        FALSE,
+        ['class' => 'crm-select2 huge']
+      );
+      $this->add(
+        'select',
+        $roleRow['minimumElement'],
+        NULL,
+        $emptyOption + $formData['roleMinimumFields'],
+        FALSE,
+        ['class' => 'crm-select2 huge']
+      );
+    }
+
     $this->addRadio(
       'setup_action',
       E::ts('Auszuführende Aktion'),
       [
-        'save_existing' => E::ts('Nur die ausgewählte Zuordnung speichern'),
+        'save_existing' => E::ts('Ausgewählte Basis- und Rollenzuordnung speichern'),
         'install_recommended' => E::ts('Empfohlene Konfiguration anlegen oder reparieren'),
       ],
       [],
@@ -119,7 +153,7 @@ class CRM_MoeveCrewing_Form_RecommendedConfiguration extends CRM_Core_Form {
         $this->assign('mappingStatusErrors', []);
 
         CRM_Core_Session::setStatus(
-          E::ts('Die vorhandenen CiviCRM-Strukturen wurden erfolgreich zugeordnet.'),
+          E::ts('Die Möwe-Crewing-Konfiguration wurde erfolgreich gespeichert.'),
           E::ts('Möwe Crewing'),
           'success'
         );

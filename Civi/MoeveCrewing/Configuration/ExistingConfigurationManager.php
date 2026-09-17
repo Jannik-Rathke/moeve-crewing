@@ -7,6 +7,7 @@ namespace Civi\MoeveCrewing\Configuration;
 use Civi\Api4\CustomField;
 use Civi\Api4\CustomGroup;
 use Civi\Api4\OptionGroup;
+use Civi\Api4\OptionValue;
 
 /**
  * Resolves and validates administrator-selected CiviCRM configuration.
@@ -21,8 +22,12 @@ final class ExistingConfigurationManager {
    *   eventGroups: array<string, string>,
    *   individualFields: array<string, string>,
    *   participantFields: array<string, string>,
-   *   defaults: array<string, string>,
-   *   statusErrors: array<int, string>
+   *   roleEnabledFields: array<string, string>,
+   *   roleMinimumFields: array<string, string>,
+   *   roleRows: array<int, array<string, string>>,
+   *   defaults: array<string, mixed>,
+   *   statusErrors: array<int, string>,
+   *   roleMappingErrors: array<int, string>
    * }
    */
   public static function getFormData(): array {
@@ -122,6 +127,8 @@ final class ExistingConfigurationManager {
     unset($fieldOptions);
 
     $defaults = self::getCurrentIds();
+    $roleFormData = self::getRoleFormData($defaults);
+    $defaults = array_merge($defaults, $roleFormData['defaults']);
 
     return [
       'roleOptionGroups' => $optionGroups,
@@ -130,8 +137,12 @@ final class ExistingConfigurationManager {
       'eventGroups' => $groups['Event'],
       'individualFields' => $fields['Individual'],
       'participantFields' => $fields['Participant'],
+      'roleEnabledFields' => $roleFormData['enabledFields'],
+      'roleMinimumFields' => $roleFormData['minimumFields'],
+      'roleRows' => $roleFormData['rows'],
       'defaults' => $defaults,
       'statusErrors' => self::getStatusErrors($defaults),
+      'roleMappingErrors' => $roleFormData['errors'],
     ];
   }
 
@@ -141,9 +152,33 @@ final class ExistingConfigurationManager {
    */
   public static function save(array $values): array {
     $configuration = self::validateIds($values);
+    $roleMapping = NULL;
+
+    if (self::roleSourceMatches($values, $configuration['ids'])) {
+      $roleMapping = self::validateRoleMapping(
+        $values,
+        $configuration['ids']['role_option_group_id'],
+        $configuration['ids']['event_group_id']
+      );
+    }
 
     foreach ($configuration['settings'] as $name => $value) {
       \Civi::settings()->set($name, $value);
+    }
+
+    if ($roleMapping !== NULL) {
+      \Civi::settings()->set(
+        'moeve_crewing_role_mapping',
+        $roleMapping['json']
+      );
+      $configuration['messages'][] = sprintf(
+        'gespeichert: Rollenzuordnung mit %d Rollen',
+        $roleMapping['count']
+      );
+    }
+    else {
+      $configuration['messages'][] =
+        'Hinweis: Die Basiszuordnung wurde geändert. Laden Sie die Seite neu, bevor Sie die Rollen zuordnen.';
     }
 
     return $configuration['messages'];
@@ -167,7 +202,8 @@ final class ExistingConfigurationManager {
    * @param array<string, mixed> $values
    * @return array{
    *   settings: array<string, string>,
-   *   messages: array<int, string>
+   *   messages: array<int, string>,
+   *   ids: array<string, int>
    * }
    */
   private static function validateIds(array $values): array {
@@ -248,6 +284,7 @@ final class ExistingConfigurationManager {
         sprintf('gespeichert: Wunschfunktionen-Feld %s', (string) $preferencesField['name']),
         sprintf('gespeichert: Veranstaltungs-Feldgruppe %s', (string) $eventGroup['name']),
       ],
+      'ids' => $ids,
     ];
   }
 
@@ -318,6 +355,418 @@ final class ExistingConfigurationManager {
     }
 
     return $field;
+  }
+
+  /**
+   * @param array<string, string> $baseIds
+   * @return array{
+   *   rows: array<int, array<string, string>>,
+   *   enabledFields: array<string, string>,
+   *   minimumFields: array<string, string>,
+   *   defaults: array<string, mixed>,
+   *   errors: array<int, string>
+   * }
+   */
+  private static function getRoleFormData(array $baseIds): array {
+    $optionGroupId = (string) ($baseIds['role_option_group_id'] ?? '');
+    $eventGroupId = (string) ($baseIds['event_group_id'] ?? '');
+    $defaults = [
+      'role_source_option_group_id' => $optionGroupId,
+      'role_source_event_group_id' => $eventGroupId,
+    ];
+
+    if (
+      !ctype_digit($optionGroupId)
+      || (int) $optionGroupId < 1
+      || !ctype_digit($eventGroupId)
+      || (int) $eventGroupId < 1
+    ) {
+      return [
+        'rows' => [],
+        'enabledFields' => [],
+        'minimumFields' => [],
+        'defaults' => $defaults,
+        'errors' => [
+          'Speichern Sie zuerst eine gültige Basiszuordnung, um die Rollen zuzuordnen.',
+        ],
+      ];
+    }
+
+    $roleOptions = self::getRoleOptions((int) $optionGroupId);
+    $eventFields = self::getEventRoleFields((int) $eventGroupId);
+    $enabledFieldOptions = self::fieldOptions($eventFields['enabled']);
+    $minimumFieldOptions = self::fieldOptions($eventFields['minimum']);
+    $enabledFieldsByName = self::fieldsByName($eventFields['enabled']);
+    $minimumFieldsByName = self::fieldsByName($eventFields['minimum']);
+    $errors = [];
+
+    try {
+      $mapping = self::getCurrentRoleMapping();
+    }
+    catch (\Throwable $exception) {
+      $mapping = [];
+      $errors[] = $exception->getMessage();
+    }
+
+    $hasOverride = trim(
+      (string) \Civi::settings()->get('moeve_crewing_role_mapping')
+    ) !== '';
+    $unmatchedRoles = array_fill_keys(array_keys($mapping), TRUE);
+    $rows = [];
+    $selectedCount = 0;
+
+    foreach ($roleOptions as $option) {
+      $optionId = (string) $option['id'];
+      $optionName = (string) $option['name'];
+      $configuredRole = $mapping[$optionName] ?? NULL;
+      $useElement = 'role_use_' . $optionId;
+      $enabledElement = 'role_enabled_field_' . $optionId;
+      $minimumElement = 'role_minimum_field_' . $optionId;
+
+      $defaults[$useElement] = $configuredRole !== NULL ? 1 : 0;
+      $defaults[$enabledElement] = '';
+      $defaults[$minimumElement] = '';
+
+      if ($configuredRole !== NULL) {
+        $selectedCount++;
+        unset($unmatchedRoles[$optionName]);
+
+        $enabledName = (string) $configuredRole['enabled_field'];
+        $minimumName = (string) $configuredRole['minimum_field'];
+        $defaults[$enabledElement] = isset($enabledFieldsByName[$enabledName])
+          ? (string) $enabledFieldsByName[$enabledName]['id']
+          : '';
+        $defaults[$minimumElement] = isset($minimumFieldsByName[$minimumName])
+          ? (string) $minimumFieldsByName[$minimumName]['id']
+          : '';
+
+        if ($defaults[$enabledElement] === '') {
+          $errors[] = sprintf(
+            'Für die Rolle „%s“ fehlt ein kompatibles Freigabefeld.',
+            (string) ($option['label'] ?? $optionName)
+          );
+        }
+        if ($defaults[$minimumElement] === '') {
+          $errors[] = sprintf(
+            'Für die Rolle „%s“ fehlt ein kompatibles Mindestanzahl-Feld.',
+            (string) ($option['label'] ?? $optionName)
+          );
+        }
+      }
+
+      $rows[] = [
+        'name' => $optionName,
+        'label' => (string) ($option['label'] ?? $optionName),
+        'useElement' => $useElement,
+        'enabledElement' => $enabledElement,
+        'minimumElement' => $minimumElement,
+      ];
+    }
+
+    if ($roleOptions === []) {
+      $errors[] = 'Die ausgewählte Optionsgruppe enthält keine aktiven Rollen.';
+    }
+    elseif ($selectedCount === 0) {
+      $errors[] = 'Wählen Sie mindestens eine Rolle für Möwe Crewing aus.';
+    }
+
+    if ($hasOverride) {
+      foreach (array_keys($unmatchedRoles) as $unmatchedRole) {
+        $errors[] = sprintf(
+          'Die konfigurierte Rolle „%s“ ist in der ausgewählten Optionsgruppe nicht vorhanden.',
+          $unmatchedRole
+        );
+      }
+    }
+
+    return [
+      'rows' => $rows,
+      'enabledFields' => $enabledFieldOptions,
+      'minimumFields' => $minimumFieldOptions,
+      'defaults' => $defaults,
+      'errors' => array_values(array_unique($errors)),
+    ];
+  }
+
+  /**
+   * @param array<string, mixed> $values
+   * @param array<string, int> $ids
+   */
+  private static function roleSourceMatches(array $values, array $ids): bool {
+    return (string) ($values['role_source_option_group_id'] ?? '')
+        === (string) $ids['role_option_group_id']
+      && (string) ($values['role_source_event_group_id'] ?? '')
+        === (string) $ids['event_group_id'];
+  }
+
+  /**
+   * @param array<string, mixed> $values
+   * @return array{json: string, count: int}
+   */
+  private static function validateRoleMapping(
+    array $values,
+    int $optionGroupId,
+    int $eventGroupId
+  ): array {
+    $roleOptions = self::getRoleOptions($optionGroupId);
+    $eventFields = self::getEventRoleFields($eventGroupId);
+    $enabledFields = $eventFields['enabled'];
+    $minimumFields = $eventFields['minimum'];
+    $usedEnabledFields = [];
+    $usedMinimumFields = [];
+    $mapping = [];
+
+    foreach ($roleOptions as $option) {
+      $optionId = (string) $option['id'];
+      if (empty($values['role_use_' . $optionId])) {
+        continue;
+      }
+
+      $enabledFieldId = self::submittedId(
+        $values,
+        'role_enabled_field_' . $optionId,
+        sprintf('Freigabefeld für „%s“', (string) $option['label'])
+      );
+      $minimumFieldId = self::submittedId(
+        $values,
+        'role_minimum_field_' . $optionId,
+        sprintf('Mindestanzahl-Feld für „%s“', (string) $option['label'])
+      );
+
+      if (!isset($enabledFields[$enabledFieldId])) {
+        throw new \RuntimeException(sprintf(
+          'Das Freigabefeld für „%s“ ist nicht kompatibel.',
+          (string) $option['label']
+        ));
+      }
+      if (!isset($minimumFields[$minimumFieldId])) {
+        throw new \RuntimeException(sprintf(
+          'Das Mindestanzahl-Feld für „%s“ ist nicht kompatibel.',
+          (string) $option['label']
+        ));
+      }
+      if (isset($usedEnabledFields[$enabledFieldId])) {
+        throw new \RuntimeException(sprintf(
+          'Das Freigabefeld für „%s“ wurde bereits einer anderen Rolle zugeordnet.',
+          (string) $option['label']
+        ));
+      }
+      if (isset($usedMinimumFields[$minimumFieldId])) {
+        throw new \RuntimeException(sprintf(
+          'Das Mindestanzahl-Feld für „%s“ wurde bereits einer anderen Rolle zugeordnet.',
+          (string) $option['label']
+        ));
+      }
+
+      $usedEnabledFields[$enabledFieldId] = TRUE;
+      $usedMinimumFields[$minimumFieldId] = TRUE;
+      $mapping[(string) $option['name']] = [
+        'label' => (string) $option['label'],
+        'enabled_field' => (string) $enabledFields[$enabledFieldId]['name'],
+        'minimum_field' => (string) $minimumFields[$minimumFieldId]['name'],
+      ];
+    }
+
+    if ($mapping === []) {
+      throw new \RuntimeException(
+        'Wählen Sie mindestens eine Rolle für Möwe Crewing aus.'
+      );
+    }
+
+    try {
+      $json = json_encode(
+        $mapping,
+        JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+      );
+    }
+    catch (\JsonException $exception) {
+      throw new \RuntimeException(
+        'Die Rollenzuordnung konnte nicht gespeichert werden.',
+        0,
+        $exception
+      );
+    }
+
+    return [
+      'json' => $json,
+      'count' => count($mapping),
+    ];
+  }
+
+  /**
+   * @param array<string, mixed> $values
+   */
+  private static function submittedId(
+    array $values,
+    string $key,
+    string $label
+  ): int {
+    $value = (string) ($values[$key] ?? '');
+    if ($value === '' || !ctype_digit($value) || (int) $value < 1) {
+      throw new \RuntimeException(sprintf(
+        'Bitte wählen Sie ein gültiges %s aus.',
+        $label
+      ));
+    }
+
+    return (int) $value;
+  }
+
+  /**
+   * @return array<int, array<string, mixed>>
+   */
+  private static function getRoleOptions(int $optionGroupId): array {
+    $options = [];
+    foreach (
+      OptionValue::get(FALSE)
+        ->addSelect('id', 'name', 'label', 'weight')
+        ->addWhere('option_group_id', '=', $optionGroupId)
+        ->addWhere('is_active', '=', TRUE)
+        ->execute() as $option
+    ) {
+      $options[] = $option;
+    }
+
+    usort(
+      $options,
+      static function (array $left, array $right): int {
+        $weightComparison = (int) ($left['weight'] ?? 0)
+          <=> (int) ($right['weight'] ?? 0);
+        if ($weightComparison !== 0) {
+          return $weightComparison;
+        }
+        return strnatcasecmp(
+          (string) ($left['label'] ?? $left['name']),
+          (string) ($right['label'] ?? $right['name'])
+        );
+      }
+    );
+
+    return $options;
+  }
+
+  /**
+   * @return array{
+   *   enabled: array<int, array<string, mixed>>,
+   *   minimum: array<int, array<string, mixed>>
+   * }
+   */
+  private static function getEventRoleFields(int $eventGroupId): array {
+    $fields = [
+      'enabled' => [],
+      'minimum' => [],
+    ];
+
+    foreach (
+      CustomField::get(FALSE)
+        ->addSelect('id', 'name', 'label', 'data_type', 'html_type')
+        ->addWhere('custom_group_id', '=', $eventGroupId)
+        ->addWhere('is_active', '=', TRUE)
+        ->execute() as $field
+    ) {
+      $fieldId = (int) $field['id'];
+      if (
+        (string) $field['data_type'] === 'Boolean'
+        && (string) $field['html_type'] === 'Toggle'
+      ) {
+        $fields['enabled'][$fieldId] = $field;
+      }
+      elseif (
+        (string) $field['data_type'] === 'Int'
+        && (string) $field['html_type'] === 'Text'
+      ) {
+        $fields['minimum'][$fieldId] = $field;
+      }
+    }
+
+    return $fields;
+  }
+
+  /**
+   * @param array<int, array<string, mixed>> $fields
+   * @return array<string, string>
+   */
+  private static function fieldOptions(array $fields): array {
+    $options = [];
+    foreach ($fields as $id => $field) {
+      $options[(string) $id] = sprintf(
+        '%s (%s)',
+        (string) ($field['label'] ?? $field['name']),
+        (string) $field['name']
+      );
+    }
+    natcasesort($options);
+    return $options;
+  }
+
+  /**
+   * @param array<int, array<string, mixed>> $fields
+   * @return array<string, array<string, mixed>>
+   */
+  private static function fieldsByName(array $fields): array {
+    $byName = [];
+    foreach ($fields as $field) {
+      $byName[(string) $field['name']] = $field;
+    }
+    return $byName;
+  }
+
+  /**
+   * @return array<string, array{
+   *   label: string,
+   *   enabled_field: string,
+   *   minimum_field: string
+   * }>
+   */
+  private static function getCurrentRoleMapping(): array {
+    $json = trim(
+      (string) \Civi::settings()->get('moeve_crewing_role_mapping')
+    );
+
+    if ($json === '') {
+      return DefaultConfiguration::roles();
+    }
+
+    try {
+      $roles = json_decode($json, TRUE, 512, JSON_THROW_ON_ERROR);
+    }
+    catch (\JsonException $exception) {
+      throw new \RuntimeException(
+        'Die gespeicherte Rollenzuordnung enthält ungültiges JSON.',
+        0,
+        $exception
+      );
+    }
+
+    if (!is_array($roles) || $roles === []) {
+      throw new \RuntimeException(
+        'Die gespeicherte Rollenzuordnung muss mindestens eine Rolle enthalten.'
+      );
+    }
+
+    foreach ($roles as $name => $role) {
+      if (!is_string($name) || !is_array($role)) {
+        throw new \RuntimeException(
+          'Jede Rollenzuordnung benötigt einen technischen Rollennamen.'
+        );
+      }
+
+      foreach (['label', 'enabled_field', 'minimum_field'] as $requiredKey) {
+        if (
+          !isset($role[$requiredKey])
+          || !is_string($role[$requiredKey])
+          || trim($role[$requiredKey]) === ''
+        ) {
+          throw new \RuntimeException(sprintf(
+            'Der Rolle „%s“ fehlt der Wert „%s“.',
+            $name,
+            $requiredKey
+          ));
+        }
+      }
+    }
+
+    return $roles;
   }
 
   /**
