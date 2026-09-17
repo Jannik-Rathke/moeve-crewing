@@ -5,6 +5,7 @@ declare(strict_types = 1);
 require_once 'moeve_crewing.civix.php';
 // phpcs:enable
 
+use Civi\MoeveCrewing\Setup\RecommendedConfigurationInstaller;
 use CRM_MoeveCrewing_ExtensionUtil as E;
 
 /**
@@ -23,6 +24,7 @@ function moeve_crewing_civicrm_config(\CRM_Core_Config $config): void {
  */
 function moeve_crewing_civicrm_install(): void {
   _moeve_crewing_civix_civicrm_install();
+  RecommendedConfigurationInstaller::install();
 }
 
 /**
@@ -32,4 +34,22 @@ function moeve_crewing_civicrm_install(): void {
  */
 function moeve_crewing_civicrm_enable(): void {
   _moeve_crewing_civix_civicrm_enable();
+}
+
+/**
+ * Implements hook_civicrm_navigationMenu().
+ *
+ * @param array<int|string, mixed> $menu
+ */
+function moeve_crewing_civicrm_navigationMenu(array &$menu): void {
+  _moeve_crewing_civix_insert_navigation_menu($menu, 'Administer', [
+    'label' => E::ts('Möwe Crewing einrichten'),
+    'name' => 'moeve_crewing_setup',
+    'url' => 'civicrm/admin/moeve-crewing/setup?reset=1',
+    'permission' => 'administer CiviCRM',
+    'operator' => 'OR',
+    'separator' => 0,
+  ]);
+
+  _moeve_crewing_civix_navigationMenu($menu);
 }

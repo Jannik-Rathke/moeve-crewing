@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<menu>
+  <item>
+    <path>civicrm/admin/moeve-crewing/setup</path>
+    <page_callback>CRM_MoeveCrewing_Form_RecommendedConfiguration</page_callback>
+    <title>M&#xF6;we Crewing &#x2013; Einrichtung</title>
+    <access_arguments>administer CiviCRM</access_arguments>
+  </item>
+</menu>
