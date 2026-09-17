@@ -1,11 +1,12 @@
 <?php
 declare(strict_types = 1);
 
+use Civi\MoeveCrewing\Configuration\ExistingConfigurationManager;
 use Civi\MoeveCrewing\Setup\RecommendedConfigurationInstaller;
 use CRM_MoeveCrewing_ExtensionUtil as E;
 
 /**
- * Runs or repairs the recommended Möwe Crewing configuration.
+ * Configures, installs, or repairs the Möwe Crewing configuration.
  */
 class CRM_MoeveCrewing_Form_RecommendedConfiguration extends CRM_Core_Form {
 
@@ -19,14 +20,86 @@ class CRM_MoeveCrewing_Form_RecommendedConfiguration extends CRM_Core_Form {
 
     CRM_Utils_System::setTitle(E::ts('Möwe Crewing – Einrichtung'));
 
+    $formData = ExistingConfigurationManager::getFormData();
+
     $this->assign('resultMessages', []);
+    $this->assign('configurationMessages', []);
     $this->assign('createdCount', 0);
     $this->assign('existingCount', 0);
+    $this->assign('mappingIsValid', $formData['statusErrors'] === []);
+    $this->assign('mappingStatusErrors', $formData['statusErrors']);
+
+    $emptyOption = ['' => E::ts('- bitte auswählen -')];
+
+    $this->add(
+      'select',
+      'role_option_group_id',
+      E::ts('Optionsgruppe der Crewing-Rollen'),
+      $emptyOption + $formData['roleOptionGroups'],
+      FALSE,
+      ['class' => 'crm-select2 huge']
+    );
+    $this->add(
+      'select',
+      'individual_group_id',
+      E::ts('Feldgruppe für Personen'),
+      $emptyOption + $formData['individualGroups'],
+      FALSE,
+      ['class' => 'crm-select2 huge']
+    );
+    $this->add(
+      'select',
+      'capabilities_field_id',
+      E::ts('Feld „Meine Fähigkeiten“'),
+      $emptyOption + $formData['individualFields'],
+      FALSE,
+      ['class' => 'crm-select2 huge']
+    );
+    $this->add(
+      'select',
+      'participant_group_id',
+      E::ts('Feldgruppe für Teilnahmen'),
+      $emptyOption + $formData['participantGroups'],
+      FALSE,
+      ['class' => 'crm-select2 huge']
+    );
+    $this->add(
+      'select',
+      'preferences_field_id',
+      E::ts('Feld „Gewünschte Funktionen“'),
+      $emptyOption + $formData['participantFields'],
+      FALSE,
+      ['class' => 'crm-select2 huge']
+    );
+    $this->add(
+      'select',
+      'event_group_id',
+      E::ts('Feldgruppe für Veranstaltungen'),
+      $emptyOption + $formData['eventGroups'],
+      FALSE,
+      ['class' => 'crm-select2 huge']
+    );
+
+    $this->addRadio(
+      'setup_action',
+      E::ts('Auszuführende Aktion'),
+      [
+        'save_existing' => E::ts('Nur die ausgewählte Zuordnung speichern'),
+        'install_recommended' => E::ts('Empfohlene Konfiguration anlegen oder reparieren'),
+      ],
+      [],
+      '<br>',
+      TRUE
+    );
+
+    $defaults = $formData['defaults'];
+    $defaults['setup_action'] = 'save_existing';
+    $this->setDefaults($defaults);
 
     $this->addButtons([
       [
         'type' => 'submit',
-        'name' => E::ts('Konfiguration anlegen oder reparieren'),
+        'name' => E::ts('Ausgewählte Aktion ausführen'),
         'isDefault' => TRUE,
       ],
     ]);
@@ -35,29 +108,48 @@ class CRM_MoeveCrewing_Form_RecommendedConfiguration extends CRM_Core_Form {
   }
 
   public function postProcess(): void {
+    $values = $this->getSubmittedValues();
+    $saveExisting = ($values['setup_action'] ?? '') === 'save_existing';
+
     try {
-      $messages = RecommendedConfigurationInstaller::install();
-      $createdCount = count(array_filter(
-        $messages,
-        static fn(string $message): bool => str_starts_with($message, 'erstellt:')
-      ));
-      $existingCount = count(array_filter(
-        $messages,
-        static fn(string $message): bool => str_starts_with($message, 'vorhanden:')
-      ));
+      if ($saveExisting) {
+        $messages = ExistingConfigurationManager::save($values);
+        $this->assign('configurationMessages', $messages);
+        $this->assign('mappingIsValid', TRUE);
+        $this->assign('mappingStatusErrors', []);
 
-      $this->assign('resultMessages', $messages);
-      $this->assign('createdCount', $createdCount);
-      $this->assign('existingCount', $existingCount);
+        CRM_Core_Session::setStatus(
+          E::ts('Die vorhandenen CiviCRM-Strukturen wurden erfolgreich zugeordnet.'),
+          E::ts('Möwe Crewing'),
+          'success'
+        );
+      }
+      else {
+        $messages = RecommendedConfigurationInstaller::install();
+        $createdCount = count(array_filter(
+          $messages,
+          static fn(string $message): bool => str_starts_with($message, 'erstellt:')
+        ));
+        $existingCount = count(array_filter(
+          $messages,
+          static fn(string $message): bool => str_starts_with($message, 'vorhanden:')
+        ));
 
-      CRM_Core_Session::setStatus(
-        E::ts('Einrichtung abgeschlossen: %1 neu erstellt, %2 bereits vorhanden.', [
-          1 => $createdCount,
-          2 => $existingCount,
-        ]),
-        E::ts('Möwe Crewing'),
-        'success'
-      );
+        $this->assign('resultMessages', $messages);
+        $this->assign('createdCount', $createdCount);
+        $this->assign('existingCount', $existingCount);
+        $this->assign('mappingIsValid', TRUE);
+        $this->assign('mappingStatusErrors', []);
+
+        CRM_Core_Session::setStatus(
+          E::ts('Einrichtung abgeschlossen: %1 neu erstellt, %2 bereits vorhanden.', [
+            1 => $createdCount,
+            2 => $existingCount,
+          ]),
+          E::ts('Möwe Crewing'),
+          'success'
+        );
+      }
     }
     catch (\Throwable $exception) {
       Civi::log()->error('Möwe Crewing setup failed: {message}', [

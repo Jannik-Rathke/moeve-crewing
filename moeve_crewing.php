@@ -5,7 +5,6 @@ declare(strict_types = 1);
 require_once 'moeve_crewing.civix.php';
 // phpcs:enable
 
-use Civi\MoeveCrewing\Setup\RecommendedConfigurationInstaller;
 use CRM_MoeveCrewing_ExtensionUtil as E;
 
 /**
@@ -24,7 +23,6 @@ function moeve_crewing_civicrm_config(\CRM_Core_Config $config): void {
  */
 function moeve_crewing_civicrm_install(): void {
   _moeve_crewing_civix_civicrm_install();
-  RecommendedConfigurationInstaller::install();
 }
 
 /**
