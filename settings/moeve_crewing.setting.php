@@ -1,0 +1,71 @@
+<?php
+
+use CRM_MoeveCrewing_ExtensionUtil as E;
+
+return [
+  'moeve_crewing_role_option_group' => [
+    'name' => 'moeve_crewing_role_option_group',
+    'type' => 'String',
+    'html_type' => 'text',
+    'default' => 'participant_role',
+    'title' => E::ts('Role option group'),
+    'description' => E::ts('Technical name of the option group containing available crew roles.'),
+    'is_domain' => 1,
+    'is_contact' => 0,
+  ],
+  'moeve_crewing_individual_group' => [
+    'name' => 'moeve_crewing_individual_group',
+    'type' => 'String',
+    'html_type' => 'text',
+    'default' => 'moeve_crewing_individual',
+    'title' => E::ts('Individual custom group'),
+    'is_domain' => 1,
+    'is_contact' => 0,
+  ],
+  'moeve_crewing_participant_group' => [
+    'name' => 'moeve_crewing_participant_group',
+    'type' => 'String',
+    'html_type' => 'text',
+    'default' => 'moeve_crewing_participant',
+    'title' => E::ts('Participant custom group'),
+    'is_domain' => 1,
+    'is_contact' => 0,
+  ],
+  'moeve_crewing_event_group' => [
+    'name' => 'moeve_crewing_event_group',
+    'type' => 'String',
+    'html_type' => 'text',
+    'default' => 'moeve_crewing_event',
+    'title' => E::ts('Event custom group'),
+    'is_domain' => 1,
+    'is_contact' => 0,
+  ],
+  'moeve_crewing_capabilities_field' => [
+    'name' => 'moeve_crewing_capabilities_field',
+    'type' => 'String',
+    'html_type' => 'text',
+    'default' => 'faehigkeiten',
+    'title' => E::ts('Capabilities field'),
+    'is_domain' => 1,
+    'is_contact' => 0,
+  ],
+  'moeve_crewing_preferences_field' => [
+    'name' => 'moeve_crewing_preferences_field',
+    'type' => 'String',
+    'html_type' => 'text',
+    'default' => 'gewuenschte_funktionen',
+    'title' => E::ts('Preferred roles field'),
+    'is_domain' => 1,
+    'is_contact' => 0,
+  ],
+  'moeve_crewing_role_mapping' => [
+    'name' => 'moeve_crewing_role_mapping',
+    'type' => 'String',
+    'html_type' => 'textarea',
+    'default' => '',
+    'title' => E::ts('Role mapping override'),
+    'description' => E::ts('Optional JSON configuration overriding the default role-to-field mapping.'),
+    'is_domain' => 1,
+    'is_contact' => 0,
+  ],
+];
