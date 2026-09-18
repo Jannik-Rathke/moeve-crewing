@@ -40,6 +40,15 @@ function moeve_crewing_civicrm_enable(): void {
  * @param array<int|string, mixed> $menu
  */
 function moeve_crewing_civicrm_navigationMenu(array &$menu): void {
+  _moeve_crewing_civix_insert_navigation_menu($menu, 'Events', [
+    'label' => E::ts('Möwe Crewing'),
+    'name' => 'moeve_crewing_overview',
+    'url' => 'civicrm/moeve-crewing?reset=1&view=year',
+    'permission' => 'administer CiviCRM',
+    'operator' => 'OR',
+    'separator' => 0,
+  ]);
+
   _moeve_crewing_civix_insert_navigation_menu($menu, 'Administer', [
     'label' => E::ts('Möwe Crewing einrichten'),
     'name' => 'moeve_crewing_setup',
