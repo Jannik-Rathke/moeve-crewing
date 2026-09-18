@@ -9,7 +9,327 @@
     {/foreach}
   </nav>
 
-  {if $activeView eq 'applications'}
+  {if $activeView eq 'voyages'}
+    <section class="crm-block crm-content-block moeve-voyage-controls">
+      <form method="get" action="{crmURL p='civicrm/moeve-crewing'}">
+        <input type="hidden" name="reset" value="1">
+        <input type="hidden" name="view" value="voyages">
+
+        <label for="moeve-voyage-year"><strong>Jahr</strong></label>
+        <select id="moeve-voyage-year" name="year">
+          {foreach from=$availableYears item=year}
+            <option value="{$year|escape}"{if $year eq $selectedYear} selected{/if}>
+              {$year|escape}
+            </option>
+          {/foreach}
+        </select>
+
+        <label for="moeve-voyage-event"><strong>Törn</strong></label>
+        <select id="moeve-voyage-event" name="event_id">
+          <option value="0">Alle Törns</option>
+          {foreach from=$voyageEvents item=eventOption}
+            <option
+              value="{$eventOption.id|escape}"
+              {if $eventOption.id eq $selectedEventId} selected{/if}
+            >{$eventOption.label|escape}</option>
+          {/foreach}
+        </select>
+
+        <button type="submit" class="crm-button">Filtern</button>
+        <a href="{$voyageResetUrl|escape}" class="crm-button">Zurücksetzen</a>
+      </form>
+    </section>
+
+    {if $pageError}
+      <div class="messages error no-popup">
+        <div class="icon error-icon"></div>
+        <p>{$pageError|escape}</p>
+      </div>
+    {else}
+      <section class="moeve-summary" aria-label="Zusammenfassung Törnplanung">
+        <div class="moeve-summary-card">
+          <span class="moeve-summary-value">{$voyageSummary.eventCount|escape}</span>
+          <span class="moeve-summary-label">Törns</span>
+        </div>
+        <div class="moeve-summary-card">
+          <span class="moeve-summary-value">{$voyageSummary.requiredCount|escape}</span>
+          <span class="moeve-summary-label">Soll-Plätze</span>
+        </div>
+        <div class="moeve-summary-card is-covered">
+          <span class="moeve-summary-value">{$voyageSummary.confirmedCount|escape}</span>
+          <span class="moeve-summary-label">Bestätigt</span>
+        </div>
+        <div class="moeve-summary-card is-attention">
+          <span class="moeve-summary-value">{$voyageSummary.openCount|escape}</span>
+          <span class="moeve-summary-label">Noch offen</span>
+        </div>
+        <div class="moeve-summary-card is-pending">
+          <span class="moeve-summary-value">{$voyageSummary.applicationCount|escape}</span>
+          <span class="moeve-summary-label">Bewerbungen</span>
+        </div>
+      </section>
+
+      {if $voyages}
+        <div class="moeve-voyage-list">
+          {foreach from=$voyages item=voyage}
+            <article class="crm-block crm-content-block moeve-voyage-card">
+              <header class="moeve-voyage-card-header">
+                <div>
+                  {if $voyage.event.number}
+                    <div class="moeve-voyage-number">{$voyage.event.number|escape}</div>
+                  {/if}
+                  <h2>
+                    <a href="{$voyage.event.url|escape}">{$voyage.event.title|escape}</a>
+                  </h2>
+                  {if $voyage.event.dateTimeLabel}
+                    <p>{$voyage.event.dateTimeLabel|escape}</p>
+                  {/if}
+                </div>
+                <div class="moeve-voyage-head-summary">
+                  <span class="moeve-count-pill is-covered">
+                    {$voyage.summary.confirmedCount|escape}/{$voyage.summary.requiredCount|escape} bestätigt
+                  </span>
+                  {if $voyage.summary.openCount}
+                    <span class="moeve-count-pill is-gap">
+                      {$voyage.summary.openCount|escape} offen
+                    </span>
+                  {/if}
+                  {if $voyage.summary.applicationCount}
+                    <span class="moeve-count-pill is-attention">
+                      {$voyage.summary.applicationCount|escape} Bewerbungen
+                    </span>
+                  {/if}
+                  <a href="{$voyage.event.url|escape}" class="crm-button">Törn bearbeiten</a>
+                </div>
+              </header>
+
+              <dl class="moeve-voyage-meta">
+                <div>
+                  <dt>Strecke</dt>
+                  <dd>
+                    {if $voyage.event.routeLabel}
+                      {$voyage.event.routeLabel|escape}
+                    {else}
+                      <span class="moeve-empty-value">Nicht hinterlegt</span>
+                    {/if}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Stamm an Bord</dt>
+                  <dd>
+                    {if $voyage.event.crewOnBoardLabel}
+                      {$voyage.event.crewOnBoardLabel|escape}
+                    {else}
+                      <span class="moeve-empty-value">Nicht hinterlegt</span>
+                    {/if}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Stamm von Bord</dt>
+                  <dd>
+                    {if $voyage.event.crewOffBoardLabel}
+                      {$voyage.event.crewOffBoardLabel|escape}
+                    {else}
+                      <span class="moeve-empty-value">Nicht hinterlegt</span>
+                    {/if}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Organisation</dt>
+                  <dd>
+                    {if $voyage.event.organizerName}
+                      <a href="{$voyage.event.organizerUrl|escape}">
+                        {$voyage.event.organizerName|escape}
+                      </a>
+                    {else}
+                      <span class="moeve-empty-value">Nicht hinterlegt</span>
+                    {/if}
+                  </dd>
+                </div>
+              </dl>
+
+              {if $voyage.event.comment}
+                <div class="moeve-voyage-comment">
+                  <strong>Kommentar</strong>
+                  <p>{$voyage.event.comment|escape|nl2br}</p>
+                </div>
+              {/if}
+
+              <section class="moeve-demand-section">
+                <h3>Besetzungsbedarf</h3>
+                {if $voyage.demands}
+                  <div class="moeve-demand-table-wrap" tabindex="0">
+                    <table class="selector row-highlight moeve-demand-table">
+                      <thead>
+                        <tr>
+                          <th>Funktion</th>
+                          <th>Soll / bestätigt</th>
+                          <th>Bestätigt</th>
+                          <th>Vorgemerkt</th>
+                          <th>Bewerbungen</th>
+                          <th>Zustand</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {foreach from=$voyage.demands item=demand}
+                          <tr>
+                            <th scope="row">{$demand.label|escape}</th>
+                            <td class="moeve-nowrap">
+                              <strong>{$demand.required|escape} / {$demand.confirmedCount|escape}</strong>
+                            </td>
+                            <td>
+                              {if $demand.confirmed}
+                                <div class="moeve-person-chips">
+                                  {foreach from=$demand.confirmed item=person}
+                                    <a href="{$person.decisionUrl|escape}" class="moeve-person-chip">
+                                      <i
+                                        class="moeve-status-dot"
+                                        style="--moeve-status-color: {$person.status.color|escape};"
+                                      ></i>
+                                      {$person.displayName|escape}
+                                    </a>
+                                  {/foreach}
+                                </div>
+                              {else}
+                                <span class="moeve-empty-value">–</span>
+                              {/if}
+                            </td>
+                            <td>
+                              {if $demand.provisional}
+                                <div class="moeve-person-chips">
+                                  {foreach from=$demand.provisional item=person}
+                                    <a href="{$person.decisionUrl|escape}" class="moeve-person-chip">
+                                      <i
+                                        class="moeve-status-dot"
+                                        style="--moeve-status-color: {$person.status.color|escape};"
+                                      ></i>
+                                      {$person.displayName|escape}
+                                    </a>
+                                  {/foreach}
+                                </div>
+                              {else}
+                                <span class="moeve-empty-value">–</span>
+                              {/if}
+                            </td>
+                            <td>
+                              {if $demand.applications}
+                                <div class="moeve-person-chips">
+                                  {foreach from=$demand.applications item=person}
+                                    <a href="{$person.decisionUrl|escape}" class="moeve-person-chip is-application">
+                                      <i
+                                        class="moeve-status-dot"
+                                        style="--moeve-status-color: {$person.status.color|escape};"
+                                      ></i>
+                                      {$person.displayName|escape}
+                                    </a>
+                                  {/foreach}
+                                </div>
+                              {else}
+                                <span class="moeve-empty-value">–</span>
+                              {/if}
+                            </td>
+                            <td>
+                              <span class="moeve-state-label is-{$demand.state|escape}">
+                                {$demand.stateLabel|escape}
+                              </span>
+                            </td>
+                          </tr>
+                        {/foreach}
+                      </tbody>
+                    </table>
+                  </div>
+                {else}
+                  <div class="messages status no-popup">
+                    <div class="icon inform-icon"></div>
+                    <p>Für diesen Törn sind keine Crewing-Funktionen freigeschaltet.</p>
+                  </div>
+                {/if}
+              </section>
+
+              <div class="moeve-voyage-people-grid">
+                <section>
+                  <h3>Eingeplante Crew <span>{$voyage.summary.crewCount|escape}</span></h3>
+                  {if $voyage.crew}
+                    <ul class="moeve-person-list">
+                      {foreach from=$voyage.crew item=member}
+                        <li>
+                          <div>
+                            <a href="{$member.contactUrl|escape}" class="moeve-person-link">
+                              {$member.displayName|escape}
+                            </a>
+                            <div class="moeve-badge-list">
+                              {foreach from=$member.roles item=roleLabel}
+                                <span class="moeve-badge is-assigned">{$roleLabel|escape}</span>
+                              {/foreach}
+                            </div>
+                          </div>
+                          <div class="moeve-person-list-actions">
+                            <span class="moeve-status-label">
+                              <i
+                                class="moeve-status-dot"
+                                style="--moeve-status-color: {$member.status.color|escape};"
+                              ></i>
+                              {$member.status.label|escape}
+                            </span>
+                            <a href="{$member.decisionUrl|escape}" class="crm-button">Bearbeiten</a>
+                          </div>
+                        </li>
+                      {/foreach}
+                    </ul>
+                  {else}
+                    <p class="moeve-empty-value">Noch niemand eingeplant.</p>
+                  {/if}
+                </section>
+
+                <section>
+                  <h3>Offene Bewerbungen <span>{$voyage.summary.applicationCount|escape}</span></h3>
+                  {if $voyage.applications}
+                    <ul class="moeve-person-list">
+                      {foreach from=$voyage.applications item=application}
+                        <li>
+                          <div>
+                            <a href="{$application.contactUrl|escape}" class="moeve-person-link">
+                              {$application.displayName|escape}
+                            </a>
+                            {if $application.preferences}
+                              <div class="moeve-badge-list">
+                                {foreach from=$application.preferences item=preference}
+                                  <span class="moeve-badge is-preference">{$preference|escape}</span>
+                                {/foreach}
+                              </div>
+                            {else}
+                              <span class="moeve-empty-value">Keine Wunschfunktion angegeben</span>
+                            {/if}
+                          </div>
+                          <div class="moeve-person-list-actions">
+                            <span class="moeve-status-label">
+                              <i
+                                class="moeve-status-dot"
+                                style="--moeve-status-color: {$application.status.color|escape};"
+                              ></i>
+                              {$application.status.label|escape}
+                            </span>
+                            <a href="{$application.decisionUrl|escape}" class="crm-button">Entscheiden</a>
+                          </div>
+                        </li>
+                      {/foreach}
+                    </ul>
+                  {else}
+                    <p class="moeve-empty-value">Keine offenen Bewerbungen.</p>
+                  {/if}
+                </section>
+              </div>
+            </article>
+          {/foreach}
+        </div>
+      {else}
+        <div class="messages status no-popup">
+          <div class="icon inform-icon"></div>
+          <p>Für die gewählten Filter wurden keine Törns gefunden.</p>
+        </div>
+      {/if}
+    {/if}
+  {elseif $activeView eq 'applications'}
     <section class="crm-block crm-content-block moeve-application-controls">
       <form method="get" action="{crmURL p='civicrm/moeve-crewing'}">
         <input type="hidden" name="reset" value="1">
@@ -416,6 +736,8 @@
   }
 
   .moeve-placeholder,
+  .moeve-voyage-controls,
+  .moeve-voyage-card,
   .moeve-application-controls,
   .moeve-application-section,
   .moeve-year-controls,
@@ -425,6 +747,7 @@
     padding: 1rem;
   }
 
+  .moeve-voyage-controls form,
   .moeve-application-controls form,
   .moeve-year-controls form {
     align-items: center;
@@ -433,6 +756,7 @@
     gap: .65rem;
   }
 
+  .moeve-voyage-controls select,
   .moeve-application-controls select {
     max-width: 24rem;
     min-width: 10rem;
@@ -500,6 +824,226 @@
 
   .moeve-section-heading p {
     margin: 0 0 .75rem;
+  }
+
+  .moeve-voyage-list {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .moeve-voyage-card {
+    border: 1px solid var(--moeve-border);
+    margin-bottom: 0;
+  }
+
+  .moeve-voyage-card-header {
+    align-items: flex-start;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: space-between;
+    margin: -1rem -1rem 1rem;
+    padding: 1rem;
+  }
+
+  .moeve-voyage-card-header h2 {
+    margin: .15rem 0 .2rem;
+  }
+
+  .moeve-voyage-card-header p {
+    color: #475569;
+    margin: 0;
+  }
+
+  .moeve-voyage-number {
+    color: #075985;
+    font-size: .8rem;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+
+  .moeve-voyage-head-summary {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .45rem;
+    justify-content: flex-end;
+  }
+
+  .moeve-count-pill,
+  .moeve-state-label {
+    border: 1px solid transparent;
+    border-radius: 999px;
+    display: inline-block;
+    font-size: .78rem;
+    font-weight: 700;
+    line-height: 1.2;
+    padding: .3rem .55rem;
+    white-space: nowrap;
+  }
+
+  .moeve-count-pill.is-covered,
+  .moeve-state-label.is-covered {
+    background: #dcfce7;
+    border-color: #86efac;
+    color: #166534;
+  }
+
+  .moeve-count-pill.is-attention,
+  .moeve-state-label.is-attention {
+    background: #ffedd5;
+    border-color: #fdba74;
+    color: #9a3412;
+  }
+
+  .moeve-count-pill.is-gap,
+  .moeve-state-label.is-gap {
+    background: #fee2e2;
+    border-color: #fca5a5;
+    color: #991b1b;
+  }
+
+  .moeve-voyage-meta {
+    display: grid;
+    gap: .75rem;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    margin: 0 0 1rem;
+  }
+
+  .moeve-voyage-meta > div {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: .4rem;
+    padding: .65rem .75rem;
+  }
+
+  .moeve-voyage-meta dt {
+    color: #64748b;
+    font-size: .75rem;
+    font-weight: 700;
+    margin-bottom: .2rem;
+    text-transform: uppercase;
+  }
+
+  .moeve-voyage-meta dd {
+    margin: 0;
+  }
+
+  .moeve-voyage-comment {
+    background: #f8fafc;
+    border-left: .3rem solid #38bdf8;
+    margin: 0 0 1rem;
+    padding: .65rem .8rem;
+  }
+
+  .moeve-voyage-comment p {
+    margin: .25rem 0 0;
+  }
+
+  .moeve-demand-section h3,
+  .moeve-voyage-people-grid h3 {
+    margin: 0 0 .65rem;
+  }
+
+  .moeve-voyage-people-grid h3 span {
+    background: #e2e8f0;
+    border-radius: 999px;
+    font-size: .75rem;
+    margin-left: .25rem;
+    padding: .15rem .45rem;
+  }
+
+  .moeve-demand-table-wrap {
+    border: 1px solid var(--moeve-border);
+    margin-bottom: 1rem;
+    overflow-x: auto;
+  }
+
+  .moeve-demand-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 0;
+    min-width: 68rem;
+    width: 100%;
+  }
+
+  .moeve-demand-table th,
+  .moeve-demand-table td {
+    background: #fff;
+    border-bottom: 1px solid #e2e8f0;
+    padding: .6rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .moeve-demand-table thead th {
+    background: #f8fafc;
+  }
+
+  .moeve-person-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .3rem;
+  }
+
+  .moeve-person-chip {
+    align-items: center;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    display: inline-flex;
+    font-size: .78rem;
+    gap: .3rem;
+    padding: .2rem .45rem;
+    text-decoration: none;
+  }
+
+  .moeve-person-chip.is-application {
+    background: #fff7ed;
+    border-color: #fdba74;
+  }
+
+  .moeve-voyage-people-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  }
+
+  .moeve-voyage-people-grid > section {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: .4rem;
+    padding: .8rem;
+  }
+
+  .moeve-person-list {
+    display: grid;
+    gap: .5rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .moeve-person-list > li {
+    align-items: flex-start;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: .35rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .65rem;
+    justify-content: space-between;
+    padding: .65rem;
+  }
+
+  .moeve-person-list-actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    justify-content: flex-end;
   }
 
   .moeve-application-table-wrap {
@@ -735,6 +1279,21 @@
   }
 
   @media (max-width: 700px) {
+    .moeve-voyage-people-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .moeve-voyage-card-header,
+    .moeve-person-list > li {
+      display: block;
+    }
+
+    .moeve-voyage-head-summary,
+    .moeve-person-list-actions {
+      justify-content: flex-start;
+      margin-top: .65rem;
+    }
+
     .moeve-matrix .moeve-row-label {
       min-width: 10rem;
       width: 10rem;

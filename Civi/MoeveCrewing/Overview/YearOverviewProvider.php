@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Civi\MoeveCrewing\Overview;
 
+use Civi\Api4\Contact;
 use Civi\Api4\Event;
 use Civi\Api4\OptionGroup;
 use Civi\Api4\OptionValue;
@@ -94,6 +95,238 @@ final class YearOverviewProvider {
         'coveredCount' => $coveredCount,
         'attentionCount' => $attentionCount,
       ],
+    ];
+  }
+
+  /**
+   * Build the operational planning view for each voyage.
+   *
+   * @return array<string, mixed>
+   */
+  public function loadVoyages(int $year, int $eventFilter = 0): array {
+    $roles = $this->getRoleMapping();
+    $roleOptions = $this->getRoleOptions();
+    $statuses = $this->getParticipantStatuses();
+    $allEvents = $this->getEvents($year, $roles);
+    $participants = $this->getParticipants(
+      array_column($allEvents, 'id'),
+      $statuses['byId'],
+      $roleOptions
+    );
+
+    $eventOptions = [];
+    foreach ($allEvents as $event) {
+      $label = (string) $event['title'];
+      if ((string) $event['number'] !== '') {
+        $label = (string) $event['number'] . ' – ' . $label;
+      }
+      if ((string) $event['dateLabel'] !== '') {
+        $label .= ' · ' . (string) $event['dateLabel'];
+      }
+      $eventOptions[] = [
+        'id' => (int) $event['id'],
+        'label' => $label,
+      ];
+    }
+
+    $participantsByEvent = [];
+    foreach ($participants as $participant) {
+      $participantsByEvent[(int) $participant['eventId']][] = $participant;
+    }
+
+    $roleByValue = [];
+    foreach ($roles as $technicalName => $role) {
+      $option = $roleOptions['byName'][$technicalName] ?? NULL;
+      if ($option) {
+        $roleByValue[(string) $option['value']] = [
+          'name' => (string) $technicalName,
+          'label' => (string) $role['label'],
+        ];
+      }
+    }
+
+    $voyages = [];
+    $totalRequired = 0;
+    $totalConfirmed = 0;
+    $totalOpen = 0;
+    $applicationIds = [];
+    foreach ($allEvents as $event) {
+      $eventId = (int) $event['id'];
+      if ($eventFilter > 0 && $eventId !== $eventFilter) {
+        continue;
+      }
+      $eventParticipants = $participantsByEvent[$eventId] ?? [];
+      $demandRows = [];
+
+      foreach ($roles as $technicalName => $role) {
+        $option = $roleOptions['byName'][$technicalName] ?? NULL;
+        if (!$option) {
+          continue;
+        }
+
+        $record = $event['record'];
+        $group = (string) $event['demandGroup'];
+        $enabled = $this->isTruthy(
+          $record[$group . '.' . $role['enabled_field']] ?? FALSE
+        );
+        if (!$enabled) {
+          continue;
+        }
+
+        $minimumValue = $record[$group . '.' . $role['minimum_field']] ?? NULL;
+        $required = max(1, (int) ($minimumValue ?? 1));
+        $roleValue = (string) $option['value'];
+        $confirmed = [];
+        $provisional = [];
+        $applications = [];
+
+        foreach ($eventParticipants as $participant) {
+          $statusClass = (string) $participant['status']['class'];
+          if ($statusClass === 'Negative') {
+            continue;
+          }
+
+          $isAssigned = in_array(
+            $roleValue,
+            $participant['roleValues'],
+            TRUE
+          );
+          if ($isAssigned) {
+            if ($statusClass === 'Positive') {
+              $confirmed[] = $this->participantDisplay($participant);
+            }
+            else {
+              $provisional[] = $this->participantDisplay($participant);
+            }
+          }
+          elseif (
+            $participant['isCandidate']
+            && in_array(
+              $roleValue,
+              $participant['preferenceValues'],
+              TRUE
+            )
+          ) {
+            $applications[] = $this->participantDisplay($participant);
+          }
+        }
+
+        $confirmedCount = count($confirmed);
+        $provisionalCount = count($provisional);
+        $applicationCount = count($applications);
+        if ($confirmedCount >= $required) {
+          $state = 'covered';
+          $stateLabel = 'Bedarf gedeckt';
+        }
+        elseif ($provisionalCount > 0 || $applicationCount > 0) {
+          $state = 'attention';
+          $stateLabel = 'Entscheidung erforderlich';
+        }
+        else {
+          $state = 'gap';
+          $stateLabel = 'Offener Bedarf';
+        }
+
+        $open = max(0, $required - $confirmedCount);
+        $totalRequired += $required;
+        $totalConfirmed += $confirmedCount;
+        $totalOpen += $open;
+        $demandRows[] = [
+          'name' => (string) $technicalName,
+          'label' => (string) $role['label'],
+          'required' => $required,
+          'confirmedCount' => $confirmedCount,
+          'provisionalCount' => $provisionalCount,
+          'applicationCount' => $applicationCount,
+          'openCount' => $open,
+          'confirmed' => $confirmed,
+          'provisional' => $provisional,
+          'applications' => $applications,
+          'state' => $state,
+          'stateLabel' => $stateLabel,
+        ];
+      }
+
+      $crew = [];
+      $openApplications = [];
+      foreach ($eventParticipants as $participant) {
+        $assignedRoles = [];
+        foreach ($participant['roleValues'] as $value) {
+          if (isset($roleByValue[$value])) {
+            $assignedRoles[] = $roleByValue[$value]['label'];
+          }
+        }
+        if (
+          $assignedRoles !== []
+          && (string) $participant['status']['class'] !== 'Negative'
+        ) {
+          $crewMember = $this->participantDisplay($participant);
+          $crewMember['roles'] = array_values(array_unique($assignedRoles));
+          $crew[] = $crewMember;
+        }
+
+        if (
+          $participant['isCandidate']
+          && (string) $participant['status']['class'] !== 'Negative'
+        ) {
+          $preferences = [];
+          foreach ($participant['preferenceValues'] as $value) {
+            if (isset($roleByValue[$value])) {
+              $preferences[] = $roleByValue[$value]['label'];
+            }
+          }
+          $application = $this->participantDisplay($participant);
+          $application['preferences'] = array_values(
+            array_unique($preferences)
+          );
+          $openApplications[] = $application;
+          $applicationIds[(int) $participant['id']] = TRUE;
+        }
+      }
+
+      usort(
+        $crew,
+        static fn(array $left, array $right): int => strnatcasecmp(
+          (string) $left['displayName'],
+          (string) $right['displayName']
+        )
+      );
+      usort(
+        $openApplications,
+        static fn(array $left, array $right): int => strnatcasecmp(
+          (string) $left['displayName'],
+          (string) $right['displayName']
+        )
+      );
+
+      $voyages[] = [
+        'event' => $event,
+        'demands' => $demandRows,
+        'crew' => $crew,
+        'applications' => $openApplications,
+        'summary' => [
+          'crewCount' => count($crew),
+          'requiredCount' => array_sum(array_column($demandRows, 'required')),
+          'confirmedCount' => array_sum(
+            array_column($demandRows, 'confirmedCount')
+          ),
+          'openCount' => array_sum(array_column($demandRows, 'openCount')),
+          'applicationCount' => count($openApplications),
+        ],
+      ];
+    }
+
+    return [
+      'voyageEvents' => $eventOptions,
+      'voyages' => $voyages,
+      'voyageSummary' => [
+        'eventCount' => count($voyages),
+        'requiredCount' => $totalRequired,
+        'confirmedCount' => $totalConfirmed,
+        'openCount' => $totalOpen,
+        'applicationCount' => count($applicationIds),
+      ],
+      'selectedEventId' => $eventFilter,
     ];
   }
 
@@ -458,6 +691,22 @@ final class YearOverviewProvider {
         'moeve_crewing_arrival_port_field',
         DefaultConfiguration::ARRIVAL_PORT_FIELD
       ),
+      'crewOnBoard' => $this->setting(
+        'moeve_crewing_crew_on_board_field',
+        DefaultConfiguration::CREW_ON_BOARD_FIELD
+      ),
+      'crewOffBoard' => $this->setting(
+        'moeve_crewing_crew_off_board_field',
+        DefaultConfiguration::CREW_OFF_BOARD_FIELD
+      ),
+      'organizer' => $this->setting(
+        'moeve_crewing_organizer_field',
+        DefaultConfiguration::ORGANIZER_FIELD
+      ),
+      'comment' => $this->setting(
+        'moeve_crewing_comment_field',
+        DefaultConfiguration::COMMENT_FIELD
+      ),
     ];
 
     $select = [
@@ -483,6 +732,29 @@ final class YearOverviewProvider {
       ->addOrderBy('start_date', 'ASC')
       ->execute();
 
+    $organizerKey = $infoGroup . '.' . $infoFields['organizer'];
+    $organizerIds = [];
+    foreach ($records as $record) {
+      $organizerId = $this->referenceId($record[$organizerKey] ?? NULL);
+      if ($organizerId > 0) {
+        $organizerIds[$organizerId] = TRUE;
+      }
+    }
+
+    $organizerNames = [];
+    if ($organizerIds !== []) {
+      foreach (
+        Contact::get(FALSE)
+          ->addSelect('id', 'display_name')
+          ->addWhere('id', 'IN', array_map('intval', array_keys($organizerIds)))
+          ->execute() as $contact
+      ) {
+        $organizerNames[(int) $contact['id']] = (string) (
+          $contact['display_name'] ?? ''
+        );
+      }
+    }
+
     $events = [];
     foreach ($records as $record) {
       $eventId = (int) $record['id'];
@@ -499,6 +771,18 @@ final class YearOverviewProvider {
       $arrival = trim((string) (
         $record[$infoGroup . '.' . $infoFields['arrival']] ?? ''
       ));
+      $crewOnBoard = (string) (
+        $record[$infoGroup . '.' . $infoFields['crewOnBoard']] ?? ''
+      );
+      $crewOffBoard = (string) (
+        $record[$infoGroup . '.' . $infoFields['crewOffBoard']] ?? ''
+      );
+      $organizerId = $this->referenceId(
+        $record[$organizerKey] ?? NULL
+      );
+      $comment = trim((string) (
+        $record[$infoGroup . '.' . $infoFields['comment']] ?? ''
+      ));
 
       $routeParts = array_values(array_filter(
         [$departure, $route, $arrival],
@@ -508,8 +792,13 @@ final class YearOverviewProvider {
         (string) ($record['start_date'] ?? ''),
         (string) ($record['end_date'] ?? '')
       );
+      $dateTimeLabel = $this->formatDateTimeRange(
+        (string) ($record['start_date'] ?? ''),
+        (string) ($record['end_date'] ?? '')
+      );
+      $routeLabel = implode(' – ', $routeParts);
       $tooltipParts = array_values(array_filter(
-        [$number, $title, $dateLabel, implode(' – ', $routeParts)],
+        [$number, $title, $dateLabel, $routeLabel],
         static fn(string $value): bool => $value !== ''
       ));
 
@@ -518,6 +807,26 @@ final class YearOverviewProvider {
         'title' => $title !== '' ? $title : sprintf('Veranstaltung %d', $eventId),
         'number' => $number,
         'dateLabel' => $dateLabel,
+        'dateTimeLabel' => $dateTimeLabel,
+        'startDate' => (string) ($record['start_date'] ?? ''),
+        'endDate' => (string) ($record['end_date'] ?? ''),
+        'departure' => $departure,
+        'route' => $route,
+        'arrival' => $arrival,
+        'routeLabel' => $routeLabel,
+        'crewOnBoard' => $crewOnBoard,
+        'crewOnBoardLabel' => $this->formatDateTime($crewOnBoard),
+        'crewOffBoard' => $crewOffBoard,
+        'crewOffBoardLabel' => $this->formatDateTime($crewOffBoard),
+        'organizerId' => $organizerId,
+        'organizerName' => $organizerNames[$organizerId] ?? '',
+        'organizerUrl' => $organizerId > 0
+          ? \CRM_Utils_System::url(
+            'civicrm/contact/view',
+            'reset=1&cid=' . $organizerId
+          )
+          : '',
+        'comment' => $comment,
         'tooltip' => implode(' · ', $tooltipParts),
         'isActive' => !empty($record['is_active']),
         'url' => $this->eventUrl($eventId),
@@ -818,6 +1127,43 @@ final class YearOverviewProvider {
   }
 
   /**
+   * @param array<string, mixed> $participant
+   * @return array<string, mixed>
+   */
+  private function participantDisplay(array $participant): array {
+    $participantId = (int) $participant['id'];
+    $contactId = (int) $participant['contactId'];
+
+    return [
+      'id' => $participantId,
+      'contactId' => $contactId,
+      'displayName' => (string) $participant['displayName'],
+      'status' => $participant['status'],
+      'registerDateLabel' => $this->formatDateTime(
+        (string) $participant['registerDate']
+      ),
+      'contactUrl' => \CRM_Utils_System::url(
+        'civicrm/contact/view',
+        'reset=1&cid=' . $contactId
+      ),
+      'participantUrl' => \CRM_Utils_System::url(
+        'civicrm/contact/view/participant',
+        http_build_query([
+          'reset' => 1,
+          'action' => 'update',
+          'id' => $participantId,
+          'cid' => $contactId,
+          'context' => 'participant',
+        ], '', '&', PHP_QUERY_RFC3986)
+      ),
+      'decisionUrl' => \CRM_Utils_System::url(
+        'civicrm/moeve-crewing/application',
+        'reset=1&id=' . $participantId
+      ),
+    ];
+  }
+
+  /**
    * @return array<int, string>
    */
   private function normalizeMultiValue(mixed $value): array {
@@ -888,6 +1234,33 @@ final class YearOverviewProvider {
     );
   }
 
+  private function formatDateTimeRange(string $start, string $end): string {
+    try {
+      $startDate = new \DateTimeImmutable($start);
+      $endDate = $end !== '' ? new \DateTimeImmutable($end) : NULL;
+    }
+    catch (\Throwable) {
+      return '';
+    }
+
+    if (!$endDate) {
+      return $startDate->format('d.m.Y H:i');
+    }
+    if ($startDate->format('Y-m-d') === $endDate->format('Y-m-d')) {
+      return sprintf(
+        '%s %s–%s',
+        $startDate->format('d.m.Y'),
+        $startDate->format('H:i'),
+        $endDate->format('H:i')
+      );
+    }
+    return sprintf(
+      '%s – %s',
+      $startDate->format('d.m.Y H:i'),
+      $endDate->format('d.m.Y H:i')
+    );
+  }
+
   private function formatDateTime(string $value): string {
     if ($value === '') {
       return '';
@@ -899,6 +1272,24 @@ final class YearOverviewProvider {
     catch (\Throwable) {
       return '';
     }
+  }
+
+  private function referenceId(mixed $value): int {
+    if (is_array($value)) {
+      foreach ($value as $part) {
+        $referenceId = $this->referenceId($part);
+        if ($referenceId > 0) {
+          return $referenceId;
+        }
+      }
+      return 0;
+    }
+
+    if (is_object($value)) {
+      return $this->referenceId((array) $value);
+    }
+
+    return is_numeric($value) ? max(0, (int) $value) : 0;
   }
 
   private function eventUrl(int $eventId): string {

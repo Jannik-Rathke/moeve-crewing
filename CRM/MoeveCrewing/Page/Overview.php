@@ -101,6 +101,15 @@ class CRM_MoeveCrewing_Page_Overview extends CRM_Core_Page {
     $this->assign('roleRows', []);
     $this->assign('peopleRows', []);
     $this->assign('statusLegend', []);
+    $this->assign('voyageEvents', []);
+    $this->assign('voyages', []);
+    $this->assign('voyageSummary', [
+      'eventCount' => 0,
+      'requiredCount' => 0,
+      'confirmedCount' => 0,
+      'openCount' => 0,
+      'applicationCount' => 0,
+    ]);
     $this->assign('applicationEvents', []);
     $this->assign('applicationStatuses', []);
     $this->assign('applicationRows', []);
@@ -112,6 +121,17 @@ class CRM_MoeveCrewing_Page_Overview extends CRM_Core_Page {
     ]);
     $this->assign('selectedEventId', $selectedEventId);
     $this->assign('selectedStatusId', $selectedStatusId);
+    $this->assign(
+      'voyageResetUrl',
+      CRM_Utils_System::url(
+        'civicrm/moeve-crewing',
+        http_build_query([
+          'reset' => 1,
+          'view' => 'voyages',
+          'year' => $selectedYear,
+        ], '', '&', PHP_QUERY_RFC3986)
+      )
+    );
     $this->assign(
       'applicationResetUrl',
       CRM_Utils_System::url(
@@ -146,6 +166,24 @@ class CRM_MoeveCrewing_Page_Overview extends CRM_Core_Page {
         ]);
         $this->assign('pageError', E::ts(
           'Die Jahresübersicht konnte nicht geladen werden: %1',
+          [1 => $exception->getMessage()]
+        ));
+      }
+    }
+    elseif ($activeView === 'voyages') {
+      try {
+        $data = $provider->loadVoyages($selectedYear, $selectedEventId);
+        foreach ($data as $name => $value) {
+          $this->assign($name, $value);
+        }
+      }
+      catch (\Throwable $exception) {
+        Civi::log()->error('Möwe Crewing voyage planning failed: {message}', [
+          'message' => $exception->getMessage(),
+          'exception' => $exception,
+        ]);
+        $this->assign('pageError', E::ts(
+          'Die Törnplanung konnte nicht geladen werden: %1',
           [1 => $exception->getMessage()]
         ));
       }
