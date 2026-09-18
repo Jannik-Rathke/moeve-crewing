@@ -47,6 +47,20 @@ class CRM_MoeveCrewing_Page_Overview extends CRM_Core_Page {
       $availableYears[] = $selectedYear;
       sort($availableYears, SORT_NUMERIC);
     }
+    $selectedEventId = max(0, (int) CRM_Utils_Request::retrieve(
+      'event_id',
+      'Integer',
+      $this,
+      FALSE,
+      0
+    ));
+    $selectedStatusId = max(0, (int) CRM_Utils_Request::retrieve(
+      'status_id',
+      'Integer',
+      $this,
+      FALSE,
+      0
+    ));
 
     $tabs = [];
     foreach ([
@@ -87,6 +101,28 @@ class CRM_MoeveCrewing_Page_Overview extends CRM_Core_Page {
     $this->assign('roleRows', []);
     $this->assign('peopleRows', []);
     $this->assign('statusLegend', []);
+    $this->assign('applicationEvents', []);
+    $this->assign('applicationStatuses', []);
+    $this->assign('applicationRows', []);
+    $this->assign('applicationSummary', [
+      'resultCount' => 0,
+      'openCount' => 0,
+      'assignedCount' => 0,
+      'negativeCount' => 0,
+    ]);
+    $this->assign('selectedEventId', $selectedEventId);
+    $this->assign('selectedStatusId', $selectedStatusId);
+    $this->assign(
+      'applicationResetUrl',
+      CRM_Utils_System::url(
+        'civicrm/moeve-crewing',
+        http_build_query([
+          'reset' => 1,
+          'view' => 'applications',
+          'year' => $selectedYear,
+        ], '', '&', PHP_QUERY_RFC3986)
+      )
+    );
     $this->assign('summary', [
       'eventCount' => 0,
       'roleCount' => 0,
@@ -110,6 +146,28 @@ class CRM_MoeveCrewing_Page_Overview extends CRM_Core_Page {
         ]);
         $this->assign('pageError', E::ts(
           'Die Jahresübersicht konnte nicht geladen werden: %1',
+          [1 => $exception->getMessage()]
+        ));
+      }
+    }
+    elseif ($activeView === 'applications') {
+      try {
+        $data = $provider->loadApplications(
+          $selectedYear,
+          $selectedEventId,
+          $selectedStatusId
+        );
+        foreach ($data as $name => $value) {
+          $this->assign($name, $value);
+        }
+      }
+      catch (\Throwable $exception) {
+        Civi::log()->error('Möwe Crewing applications failed: {message}', [
+          'message' => $exception->getMessage(),
+          'exception' => $exception,
+        ]);
+        $this->assign('pageError', E::ts(
+          'Die Bewerbungsübersicht konnte nicht geladen werden: %1',
           [1 => $exception->getMessage()]
         ));
       }

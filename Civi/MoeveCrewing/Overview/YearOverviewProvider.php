@@ -98,6 +98,174 @@ final class YearOverviewProvider {
   }
 
   /**
+   * Build the read-only application workspace.
+   *
+   * @return array<string, mixed>
+   */
+  public function loadApplications(
+    int $year,
+    int $eventFilter = 0,
+    int $statusFilter = 0
+  ): array {
+    $roles = $this->getRoleMapping();
+    $roleOptions = $this->getRoleOptions();
+    $statuses = $this->getParticipantStatuses();
+    $events = $this->getEvents($year, $roles);
+    $participants = $this->getParticipants(
+      array_column($events, 'id'),
+      $statuses['byId'],
+      $roleOptions
+    );
+
+    $eventsById = [];
+    $eventOptions = [];
+    foreach ($events as $event) {
+      $eventId = (int) $event['id'];
+      $eventsById[$eventId] = $event;
+      $optionLabel = (string) $event['title'];
+      if ((string) $event['number'] !== '') {
+        $optionLabel = (string) $event['number'] . ' – ' . $optionLabel;
+      }
+      if ((string) $event['dateLabel'] !== '') {
+        $optionLabel .= ' · ' . (string) $event['dateLabel'];
+      }
+      $eventOptions[] = [
+        'id' => $eventId,
+        'label' => $optionLabel,
+      ];
+    }
+
+    $configuredRoleValues = [];
+    foreach ($roles as $technicalName => $role) {
+      $option = $roleOptions['byName'][$technicalName] ?? NULL;
+      if ($option) {
+        $configuredRoleValues[(string) $option['value']] =
+          (string) $role['label'];
+      }
+    }
+
+    $rows = [];
+    $openCount = 0;
+    $assignedCount = 0;
+    $negativeCount = 0;
+    foreach ($participants as $participant) {
+      $eventId = (int) $participant['eventId'];
+      $statusId = (int) $participant['status']['id'];
+      if ($eventFilter > 0 && $eventId !== $eventFilter) {
+        continue;
+      }
+      if ($statusFilter > 0 && $statusId !== $statusFilter) {
+        continue;
+      }
+
+      $event = $eventsById[$eventId] ?? NULL;
+      if (!$event) {
+        continue;
+      }
+
+      $preferenceLabels = [];
+      foreach ($participant['preferenceValues'] as $value) {
+        if (isset($configuredRoleValues[$value])) {
+          $preferenceLabels[] = $configuredRoleValues[$value];
+        }
+      }
+      $preferenceLabels = array_values(array_unique($preferenceLabels));
+
+      $assignedRoleLabels = [];
+      foreach ($participant['roleValues'] as $value) {
+        if (isset($configuredRoleValues[$value])) {
+          $assignedRoleLabels[] = $configuredRoleValues[$value];
+        }
+      }
+      $assignedRoleLabels = array_values(array_unique($assignedRoleLabels));
+
+      if (
+        !$participant['isCandidate']
+        && $preferenceLabels === []
+        && $assignedRoleLabels === []
+      ) {
+        continue;
+      }
+
+      $statusClass = (string) $participant['status']['class'];
+      if ($participant['isCandidate'] && $statusClass !== 'Negative') {
+        $openCount++;
+      }
+      if ($assignedRoleLabels !== []) {
+        $assignedCount++;
+      }
+      if ($statusClass === 'Negative') {
+        $negativeCount++;
+      }
+
+      $contactId = (int) $participant['contactId'];
+      $participantId = (int) $participant['id'];
+      $rows[] = [
+        'id' => $participantId,
+        'eventId' => $eventId,
+        'eventTitle' => (string) $event['title'],
+        'eventDateLabel' => (string) $event['dateLabel'],
+        'eventUrl' => (string) $event['url'],
+        'contactId' => $contactId,
+        'displayName' => (string) $participant['displayName'],
+        'contactUrl' => \CRM_Utils_System::url(
+          'civicrm/contact/view',
+          'reset=1&cid=' . $contactId
+        ),
+        'participantUrl' => \CRM_Utils_System::url(
+          'civicrm/contact/view/participant',
+          http_build_query([
+            'reset' => 1,
+            'action' => 'update',
+            'id' => $participantId,
+            'cid' => $contactId,
+            'context' => 'participant',
+          ], '', '&', PHP_QUERY_RFC3986)
+        ),
+        'status' => $participant['status'],
+        'isCandidate' => (bool) $participant['isCandidate'],
+        'preferences' => $preferenceLabels,
+        'assignedRoles' => $assignedRoleLabels,
+        'registerDate' => (string) $participant['registerDate'],
+        'registerDateLabel' => $this->formatDateTime(
+          (string) $participant['registerDate']
+        ),
+      ];
+    }
+
+    usort(
+      $rows,
+      static function (array $left, array $right): int {
+        $dateComparison = strcmp(
+          (string) $right['registerDate'],
+          (string) $left['registerDate']
+        );
+        if ($dateComparison !== 0) {
+          return $dateComparison;
+        }
+        return strnatcasecmp(
+          (string) $left['displayName'],
+          (string) $right['displayName']
+        );
+      }
+    );
+
+    return [
+      'applicationEvents' => $eventOptions,
+      'applicationStatuses' => array_values($statuses['byId']),
+      'applicationRows' => $rows,
+      'applicationSummary' => [
+        'resultCount' => count($rows),
+        'openCount' => $openCount,
+        'assignedCount' => $assignedCount,
+        'negativeCount' => $negativeCount,
+      ],
+      'selectedEventId' => $eventFilter,
+      'selectedStatusId' => $statusFilter,
+    ];
+  }
+
+  /**
    * @return array<string, array{
    *   label: string,
    *   enabled_field: string,
@@ -390,6 +558,7 @@ final class YearOverviewProvider {
         'contact_id.display_name',
         'status_id',
         'role_id',
+        'register_date',
         $preferencesKey
       )
       ->addWhere('event_id', 'IN', $eventIds)
@@ -431,6 +600,7 @@ final class YearOverviewProvider {
         'roleValues' => $roleValues,
         'roleLabels' => array_values(array_unique($roleLabels)),
         'preferenceValues' => $preferenceValues,
+        'registerDate' => (string) ($record['register_date'] ?? ''),
         'isCandidate' => in_array(
           (string) $roleOptions['candidateValue'],
           $roleValues,
@@ -712,6 +882,19 @@ final class YearOverviewProvider {
       $startDate->format('d.m.'),
       $endDate->format('d.m.Y')
     );
+  }
+
+  private function formatDateTime(string $value): string {
+    if ($value === '') {
+      return '';
+    }
+
+    try {
+      return (new \DateTimeImmutable($value))->format('d.m.Y H:i');
+    }
+    catch (\Throwable) {
+      return '';
+    }
   }
 
   private function eventUrl(int $eventId): string {

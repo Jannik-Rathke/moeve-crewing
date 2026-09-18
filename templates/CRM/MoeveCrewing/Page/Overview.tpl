@@ -9,7 +9,179 @@
     {/foreach}
   </nav>
 
-  {if $activeView neq 'year'}
+  {if $activeView eq 'applications'}
+    <section class="crm-block crm-content-block moeve-application-controls">
+      <form method="get" action="{crmURL p='civicrm/moeve-crewing'}">
+        <input type="hidden" name="reset" value="1">
+        <input type="hidden" name="view" value="applications">
+
+        <label for="moeve-application-year"><strong>Jahr</strong></label>
+        <select id="moeve-application-year" name="year">
+          {foreach from=$availableYears item=year}
+            <option value="{$year|escape}"{if $year eq $selectedYear} selected{/if}>
+              {$year|escape}
+            </option>
+          {/foreach}
+        </select>
+
+        <label for="moeve-application-event"><strong>Törn</strong></label>
+        <select id="moeve-application-event" name="event_id">
+          <option value="0">Alle Törns</option>
+          {foreach from=$applicationEvents item=eventOption}
+            <option
+              value="{$eventOption.id|escape}"
+              {if $eventOption.id eq $selectedEventId} selected{/if}
+            >{$eventOption.label|escape}</option>
+          {/foreach}
+        </select>
+
+        <label for="moeve-application-status"><strong>Status</strong></label>
+        <select id="moeve-application-status" name="status_id">
+          <option value="0">Alle Status</option>
+          {foreach from=$applicationStatuses item=statusOption}
+            <option
+              value="{$statusOption.id|escape}"
+              {if $statusOption.id eq $selectedStatusId} selected{/if}
+            >{$statusOption.label|escape}{if !$statusOption.isActive} (inaktiv){/if}</option>
+          {/foreach}
+        </select>
+
+        <button type="submit" class="crm-button">Filtern</button>
+        <a href="{$applicationResetUrl|escape}" class="crm-button">Zurücksetzen</a>
+      </form>
+    </section>
+
+    {if $pageError}
+      <div class="messages error no-popup">
+        <div class="icon error-icon"></div>
+        <p>{$pageError|escape}</p>
+      </div>
+    {else}
+      <section class="moeve-summary" aria-label="Zusammenfassung Bewerbungen">
+        <div class="moeve-summary-card">
+          <span class="moeve-summary-value">{$applicationSummary.resultCount|escape}</span>
+          <span class="moeve-summary-label">Treffer</span>
+        </div>
+        <div class="moeve-summary-card is-pending">
+          <span class="moeve-summary-value">{$applicationSummary.openCount|escape}</span>
+          <span class="moeve-summary-label">Noch zuzuordnen</span>
+        </div>
+        <div class="moeve-summary-card is-covered">
+          <span class="moeve-summary-value">{$applicationSummary.assignedCount|escape}</span>
+          <span class="moeve-summary-label">Funktion zugewiesen</span>
+        </div>
+        <div class="moeve-summary-card is-negative">
+          <span class="moeve-summary-value">{$applicationSummary.negativeCount|escape}</span>
+          <span class="moeve-summary-label">Negativer Status</span>
+        </div>
+      </section>
+
+      <section class="crm-block crm-content-block moeve-application-section">
+        <div class="moeve-section-heading">
+          <div>
+            <h2>Bewerbungen und Crew-Zuordnungen</h2>
+            <p>
+              Die Liste enthält potentielle Crewmitglieder und bereits einer
+              Crewing-Funktion zugeordnete Teilnahmen.
+            </p>
+          </div>
+        </div>
+
+        {if $applicationRows}
+          <div class="moeve-application-table-wrap" tabindex="0">
+            <table class="selector row-highlight moeve-application-table">
+              <thead>
+                <tr>
+                  <th>Eingegangen</th>
+                  <th>Person</th>
+                  <th>Törn</th>
+                  <th>Wunschfunktionen</th>
+                  <th>Teilnahmestatus</th>
+                  <th>Zugewiesene Funktion</th>
+                  <th>Aktionen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {foreach from=$applicationRows item=application}
+                  <tr>
+                    <td class="moeve-nowrap">
+                      {if $application.registerDateLabel}
+                        {$application.registerDateLabel|escape}
+                      {else}
+                        <span class="moeve-empty-value">–</span>
+                      {/if}
+                    </td>
+                    <td>
+                      <a href="{$application.contactUrl|escape}" class="moeve-person-link">
+                        {$application.displayName|escape}
+                      </a>
+                      {if $application.isCandidate}
+                        <span class="moeve-badge is-candidate">Bewerbung</span>
+                      {/if}
+                    </td>
+                    <td>
+                      <a href="{$application.eventUrl|escape}">
+                        {$application.eventTitle|escape}
+                      </a>
+                      {if $application.eventDateLabel}
+                        <small>{$application.eventDateLabel|escape}</small>
+                      {/if}
+                    </td>
+                    <td>
+                      {if $application.preferences}
+                        <div class="moeve-badge-list">
+                          {foreach from=$application.preferences item=preference}
+                            <span class="moeve-badge is-preference">{$preference|escape}</span>
+                          {/foreach}
+                        </div>
+                      {else}
+                        <span class="moeve-empty-value">Keine angegeben</span>
+                      {/if}
+                    </td>
+                    <td>
+                      <span class="moeve-status-label">
+                        <i
+                          class="moeve-status-dot"
+                          style="--moeve-status-color: {$application.status.color|escape};"
+                        ></i>
+                        {$application.status.label|escape}
+                      </span>
+                    </td>
+                    <td>
+                      {if $application.assignedRoles}
+                        <div class="moeve-badge-list">
+                          {foreach from=$application.assignedRoles item=assignedRole}
+                            <span class="moeve-badge is-assigned">{$assignedRole|escape}</span>
+                          {/foreach}
+                        </div>
+                      {else}
+                        <span class="moeve-empty-value">Noch nicht zugeordnet</span>
+                      {/if}
+                    </td>
+                    <td>
+                      <div class="moeve-action-list">
+                        <a href="{$application.participantUrl|escape}" class="crm-button">
+                          Teilnahme
+                        </a>
+                        <a href="{$application.contactUrl|escape}" class="crm-button">
+                          Kontakt
+                        </a>
+                      </div>
+                    </td>
+                  </tr>
+                {/foreach}
+              </tbody>
+            </table>
+          </div>
+        {else}
+          <div class="messages status no-popup">
+            <div class="icon inform-icon"></div>
+            <p>Für die gewählten Filter wurden keine Crewing-Bewerbungen gefunden.</p>
+          </div>
+        {/if}
+      </section>
+    {/if}
+  {elseif $activeView neq 'year'}
     <section class="crm-block crm-content-block moeve-placeholder">
       <h2>{$placeholder.title|escape}</h2>
       <p>{$placeholder.text|escape}</p>
@@ -241,6 +413,8 @@
   }
 
   .moeve-placeholder,
+  .moeve-application-controls,
+  .moeve-application-section,
   .moeve-year-controls,
   .moeve-matrix-section {
     border-radius: .45rem;
@@ -248,11 +422,17 @@
     padding: 1rem;
   }
 
+  .moeve-application-controls form,
   .moeve-year-controls form {
     align-items: center;
     display: flex;
     flex-wrap: wrap;
     gap: .65rem;
+  }
+
+  .moeve-application-controls select {
+    max-width: 24rem;
+    min-width: 10rem;
   }
 
   .moeve-year-controls select {
@@ -283,6 +463,14 @@
     border-left: .35rem solid var(--moeve-gap);
   }
 
+  .moeve-summary-card.is-pending {
+    border-left: .35rem solid var(--moeve-attention);
+  }
+
+  .moeve-summary-card.is-negative {
+    border-left: .35rem solid var(--moeve-gap);
+  }
+
   .moeve-summary-value {
     font-size: 1.55rem;
     font-weight: 800;
@@ -309,6 +497,106 @@
 
   .moeve-section-heading p {
     margin: 0 0 .75rem;
+  }
+
+  .moeve-application-table-wrap {
+    border: 1px solid var(--moeve-border);
+    max-height: 70vh;
+    overflow: auto;
+  }
+
+  .moeve-application-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 0;
+    min-width: 78rem;
+    width: 100%;
+  }
+
+  .moeve-application-table th,
+  .moeve-application-table td {
+    background: #fff;
+    border-bottom: 1px solid #e2e8f0;
+    padding: .65rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .moeve-application-table thead th {
+    background: #f8fafc;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+
+  .moeve-application-table small {
+    color: #64748b;
+    display: block;
+    margin-top: .2rem;
+  }
+
+  .moeve-person-link {
+    display: block;
+    font-weight: 700;
+    margin-bottom: .3rem;
+  }
+
+  .moeve-badge-list,
+  .moeve-action-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .3rem;
+  }
+
+  .moeve-badge {
+    border: 1px solid transparent;
+    border-radius: 999px;
+    display: inline-block;
+    font-size: .78rem;
+    line-height: 1.2;
+    padding: .2rem .45rem;
+  }
+
+  .moeve-badge.is-candidate {
+    background: #fff7ed;
+    border-color: #fdba74;
+    color: #9a3412;
+  }
+
+  .moeve-badge.is-preference {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1e40af;
+  }
+
+  .moeve-badge.is-assigned {
+    background: #f0fdf4;
+    border-color: #86efac;
+    color: #166534;
+  }
+
+  .moeve-status-label {
+    align-items: center;
+    display: inline-flex;
+    gap: .4rem;
+  }
+
+  .moeve-status-dot {
+    background: var(--moeve-status-color, #64748b);
+    border: 1px solid rgba(15, 23, 42, .2);
+    border-radius: 50%;
+    display: inline-block;
+    height: .8rem;
+    width: .8rem;
+  }
+
+  .moeve-empty-value {
+    color: #64748b;
+    font-style: italic;
+  }
+
+  .moeve-nowrap {
+    white-space: nowrap;
   }
 
   .moeve-legend {
