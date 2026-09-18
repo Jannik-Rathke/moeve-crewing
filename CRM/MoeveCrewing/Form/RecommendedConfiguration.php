@@ -29,11 +29,17 @@ class CRM_MoeveCrewing_Form_RecommendedConfiguration extends CRM_Core_Form {
     $this->assign('mappingIsValid', $formData['statusErrors'] === []);
     $this->assign('mappingStatusErrors', $formData['statusErrors']);
     $this->assign('roleRows', $formData['roleRows']);
+    $this->assign('statusRows', $formData['statusRows']);
     $this->assign(
       'roleMappingIsValid',
       $formData['roleMappingErrors'] === []
     );
     $this->assign('roleMappingErrors', $formData['roleMappingErrors']);
+    $this->assign(
+      'statusColorsAreValid',
+      $formData['statusColorErrors'] === []
+    );
+    $this->assign('statusColorErrors', $formData['statusColorErrors']);
 
     $emptyOption = ['' => E::ts('- bitte auswählen -')];
 
@@ -42,6 +48,14 @@ class CRM_MoeveCrewing_Form_RecommendedConfiguration extends CRM_Core_Form {
       'role_option_group_id',
       E::ts('Optionsgruppe der Crewing-Rollen'),
       $emptyOption + $formData['roleOptionGroups'],
+      FALSE,
+      ['class' => 'crm-select2 huge']
+    );
+    $this->add(
+      'select',
+      'candidate_role_id',
+      E::ts('Rolle „potentielles Crewmitglied“'),
+      $emptyOption + $formData['candidateRoles'],
       FALSE,
       ['class' => 'crm-select2 huge']
     );
@@ -79,8 +93,80 @@ class CRM_MoeveCrewing_Form_RecommendedConfiguration extends CRM_Core_Form {
     );
     $this->add(
       'select',
+      'event_info_group_id',
+      E::ts('Feldgruppe „Veranstaltungsinfo“'),
+      $emptyOption + $formData['eventGroups'],
+      FALSE,
+      ['class' => 'crm-select2 huge']
+    );
+    $this->add(
+      'select',
+      'event_number_field_id',
+      E::ts('Feld „Veranstaltungsnummer“'),
+      $emptyOption + $formData['eventTextFields'],
+      FALSE,
+      ['class' => 'crm-select2 huge']
+    );
+    $this->add(
+      'select',
+      'departure_port_field_id',
+      E::ts('Feld „Hafen von“'),
+      $emptyOption + $formData['eventTextFields'],
+      FALSE,
+      ['class' => 'crm-select2 huge']
+    );
+    $this->add(
+      'select',
+      'route_field_id',
+      E::ts('Feld „Route“'),
+      $emptyOption + $formData['eventTextFields'],
+      FALSE,
+      ['class' => 'crm-select2 huge']
+    );
+    $this->add(
+      'select',
+      'arrival_port_field_id',
+      E::ts('Feld „Hafen bis“'),
+      $emptyOption + $formData['eventTextFields'],
+      FALSE,
+      ['class' => 'crm-select2 huge']
+    );
+    $this->add(
+      'select',
+      'crew_on_board_field_id',
+      E::ts('Feld „Stamm an Bord“'),
+      $emptyOption + $formData['eventDateTimeFields'],
+      FALSE,
+      ['class' => 'crm-select2 huge']
+    );
+    $this->add(
+      'select',
+      'crew_off_board_field_id',
+      E::ts('Feld „Stamm von Bord“'),
+      $emptyOption + $formData['eventDateTimeFields'],
+      FALSE,
+      ['class' => 'crm-select2 huge']
+    );
+    $this->add(
+      'select',
+      'organizer_field_id',
+      E::ts('Feld „Organisator“'),
+      $emptyOption + $formData['eventContactFields'],
+      FALSE,
+      ['class' => 'crm-select2 huge']
+    );
+    $this->add(
+      'select',
+      'comment_field_id',
+      E::ts('Feld „Kommentar“'),
+      $emptyOption + $formData['eventMemoFields'],
+      FALSE,
+      ['class' => 'crm-select2 huge']
+    );
+    $this->add(
+      'select',
       'event_group_id',
-      E::ts('Feldgruppe für Veranstaltungen'),
+      E::ts('Feldgruppe für den Besetzungsbedarf'),
       $emptyOption + $formData['eventGroups'],
       FALSE,
       ['class' => 'crm-select2 huge']
@@ -114,11 +200,25 @@ class CRM_MoeveCrewing_Form_RecommendedConfiguration extends CRM_Core_Form {
       );
     }
 
+    foreach ($formData['statusRows'] as $statusRow) {
+      $this->add(
+        'text',
+        $statusRow['colorElement'],
+        NULL,
+        [
+          'class' => 'moeve-status-color',
+          'maxlength' => 7,
+          'pattern' => '#[0-9A-Fa-f]{6}',
+          'title' => E::ts('Farbe im Format #RRGGBB'),
+        ]
+      );
+    }
+
     $this->addRadio(
       'setup_action',
       E::ts('Auszuführende Aktion'),
       [
-        'save_existing' => E::ts('Ausgewählte Basis- und Rollenzuordnung speichern'),
+        'save_existing' => E::ts('Zuordnungen und Statusfarben speichern'),
         'install_recommended' => E::ts('Empfohlene Konfiguration anlegen oder reparieren'),
       ],
       [],

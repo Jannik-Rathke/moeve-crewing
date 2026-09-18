@@ -8,6 +8,7 @@ use Civi\Api4\CustomField;
 use Civi\Api4\CustomGroup;
 use Civi\Api4\OptionGroup;
 use Civi\Api4\OptionValue;
+use Civi\Api4\ParticipantStatusType;
 
 /**
  * Resolves and validates administrator-selected CiviCRM configuration.
@@ -22,12 +23,19 @@ final class ExistingConfigurationManager {
    *   eventGroups: array<string, string>,
    *   individualFields: array<string, string>,
    *   participantFields: array<string, string>,
+   *   candidateRoles: array<string, string>,
+   *   eventTextFields: array<string, string>,
+   *   eventDateTimeFields: array<string, string>,
+   *   eventContactFields: array<string, string>,
+   *   eventMemoFields: array<string, string>,
    *   roleEnabledFields: array<string, string>,
    *   roleMinimumFields: array<string, string>,
    *   roleRows: array<int, array<string, string>>,
+   *   statusRows: array<int, array<string, mixed>>,
    *   defaults: array<string, mixed>,
    *   statusErrors: array<int, string>,
-   *   roleMappingErrors: array<int, string>
+   *   roleMappingErrors: array<int, string>,
+   *   statusColorErrors: array<int, string>
    * }
    */
   public static function getFormData(): array {
@@ -77,6 +85,12 @@ final class ExistingConfigurationManager {
       'Individual' => [],
       'Participant' => [],
     ];
+    $eventInfoFields = [
+      'text' => [],
+      'dateTime' => [],
+      'contact' => [],
+      'memo' => [],
+    ];
 
     foreach (
       CustomField::get(FALSE)
@@ -88,7 +102,8 @@ final class ExistingConfigurationManager {
           'data_type',
           'html_type',
           'option_group_id',
-          'serialize'
+          'serialize',
+          'time_format'
         )
         ->addWhere('is_active', '=', TRUE)
         ->execute() as $field
@@ -100,6 +115,39 @@ final class ExistingConfigurationManager {
       }
 
       $extends = (string) $group['extends'];
+      if ($extends === 'Event') {
+        $fieldId = (string) $field['id'];
+        $dataType = (string) $field['data_type'];
+        $htmlType = (string) $field['html_type'];
+        $option = sprintf(
+          '%s — %s.%s',
+          (string) ($field['label'] ?? $field['name']),
+          (string) $group['name'],
+          (string) $field['name']
+        );
+
+        if ($dataType === 'String' && $htmlType === 'Text') {
+          $eventInfoFields['text'][$fieldId] = $option;
+        }
+        elseif (
+          $dataType === 'Date'
+          && $htmlType === 'Select Date'
+          && (int) ($field['time_format'] ?? 0) > 0
+        ) {
+          $eventInfoFields['dateTime'][$fieldId] = $option;
+        }
+        elseif (
+          $dataType === 'ContactReference'
+          && $htmlType === 'Autocomplete-Select'
+        ) {
+          $eventInfoFields['contact'][$fieldId] = $option;
+        }
+        elseif ($dataType === 'Memo' && $htmlType === 'TextArea') {
+          $eventInfoFields['memo'][$fieldId] = $option;
+        }
+        continue;
+      }
+
       if (!isset($fields[$extends])) {
         continue;
       }
@@ -125,24 +173,51 @@ final class ExistingConfigurationManager {
       natcasesort($fieldOptions);
     }
     unset($fieldOptions);
+    foreach ($eventInfoFields as &$fieldOptions) {
+      natcasesort($fieldOptions);
+    }
+    unset($fieldOptions);
 
     $defaults = self::getCurrentIds();
     $roleFormData = self::getRoleFormData($defaults);
-    $defaults = array_merge($defaults, $roleFormData['defaults']);
+    $statusFormData = self::getParticipantStatusFormData();
+    $defaults = array_merge(
+      $defaults,
+      $roleFormData['defaults'],
+      $statusFormData['defaults']
+    );
+
+    $candidateRoles = [];
+    $optionGroupId = (string) ($defaults['role_option_group_id'] ?? '');
+    if (ctype_digit($optionGroupId) && (int) $optionGroupId > 0) {
+      foreach (self::getRoleOptions((int) $optionGroupId) as $option) {
+        $candidateRoles[(string) $option['id']] = self::recordLabel(
+          (string) ($option['label'] ?? $option['name']),
+          (string) $option['name']
+        );
+      }
+    }
 
     return [
       'roleOptionGroups' => $optionGroups,
+      'candidateRoles' => $candidateRoles,
       'individualGroups' => $groups['Individual'],
       'participantGroups' => $groups['Participant'],
       'eventGroups' => $groups['Event'],
       'individualFields' => $fields['Individual'],
       'participantFields' => $fields['Participant'],
+      'eventTextFields' => $eventInfoFields['text'],
+      'eventDateTimeFields' => $eventInfoFields['dateTime'],
+      'eventContactFields' => $eventInfoFields['contact'],
+      'eventMemoFields' => $eventInfoFields['memo'],
       'roleEnabledFields' => $roleFormData['enabledFields'],
       'roleMinimumFields' => $roleFormData['minimumFields'],
       'roleRows' => $roleFormData['rows'],
+      'statusRows' => $statusFormData['rows'],
       'defaults' => $defaults,
       'statusErrors' => self::getStatusErrors($defaults),
       'roleMappingErrors' => $roleFormData['errors'],
+      'statusColorErrors' => $statusFormData['errors'],
     ];
   }
 
@@ -152,19 +227,29 @@ final class ExistingConfigurationManager {
    */
   public static function save(array $values): array {
     $configuration = self::validateIds($values);
+    $statusColors = self::validateParticipantStatusColors($values);
     $roleMapping = NULL;
 
     if (self::roleSourceMatches($values, $configuration['ids'])) {
       $roleMapping = self::validateRoleMapping(
         $values,
         $configuration['ids']['role_option_group_id'],
-        $configuration['ids']['event_group_id']
+        $configuration['ids']['event_group_id'],
+        $configuration['ids']['candidate_role_id']
       );
     }
 
     foreach ($configuration['settings'] as $name => $value) {
       \Civi::settings()->set($name, $value);
     }
+    \Civi::settings()->set(
+      'moeve_crewing_participant_status_colors',
+      $statusColors['json']
+    );
+    $configuration['messages'][] = sprintf(
+      'gespeichert: Farben für %d Teilnahmestatus',
+      $statusColors['count']
+    );
 
     if ($roleMapping !== NULL) {
       \Civi::settings()->set(
@@ -209,11 +294,21 @@ final class ExistingConfigurationManager {
   private static function validateIds(array $values): array {
     $required = [
       'role_option_group_id' => 'Rollengruppe',
+      'candidate_role_id' => 'Rolle für potentielle Crewmitglieder',
       'individual_group_id' => 'Feldgruppe für Personen',
       'capabilities_field_id' => 'Fähigkeiten-Feld',
       'participant_group_id' => 'Feldgruppe für Teilnahmen',
       'preferences_field_id' => 'Wunschfunktionen-Feld',
-      'event_group_id' => 'Feldgruppe für Veranstaltungen',
+      'event_info_group_id' => 'Feldgruppe für Veranstaltungsinformationen',
+      'event_number_field_id' => 'Veranstaltungsnummer-Feld',
+      'departure_port_field_id' => 'Abfahrtshafen-Feld',
+      'route_field_id' => 'Routen-Feld',
+      'arrival_port_field_id' => 'Ankunftshafen-Feld',
+      'crew_on_board_field_id' => 'Stamm-an-Bord-Feld',
+      'crew_off_board_field_id' => 'Stamm-von-Bord-Feld',
+      'organizer_field_id' => 'Organisator-Feld',
+      'comment_field_id' => 'Kommentar-Feld',
+      'event_group_id' => 'Feldgruppe für den Besetzungsbedarf',
     ];
 
     $ids = [];
@@ -238,6 +333,19 @@ final class ExistingConfigurationManager {
       throw new \RuntimeException('Die ausgewählte Rollengruppe wurde nicht gefunden oder ist inaktiv.');
     }
 
+    $candidateRole = OptionValue::get(FALSE)
+      ->addSelect('id', 'name', 'label', 'option_group_id')
+      ->addWhere('id', '=', $ids['candidate_role_id'])
+      ->addWhere('option_group_id', '=', (int) $optionGroup['id'])
+      ->addWhere('is_active', '=', TRUE)
+      ->execute()
+      ->first();
+    if (!$candidateRole) {
+      throw new \RuntimeException(
+        'Die Rolle für potentielle Crewmitglieder gehört nicht zur ausgewählten Rollengruppe oder ist inaktiv.'
+      );
+    }
+
     $individualGroup = self::requireGroup(
       $ids['individual_group_id'],
       'Individual',
@@ -248,10 +356,15 @@ final class ExistingConfigurationManager {
       'Participant',
       'Teilnahmen'
     );
+    $eventInfoGroup = self::requireGroup(
+      $ids['event_info_group_id'],
+      'Event',
+      'Veranstaltungsinformationen'
+    );
     $eventGroup = self::requireGroup(
       $ids['event_group_id'],
       'Event',
-      'Veranstaltungen'
+      'den Besetzungsbedarf'
     );
 
     $capabilitiesField = self::requireRoleField(
@@ -267,22 +380,117 @@ final class ExistingConfigurationManager {
       'Wunschfunktionen-Feld'
     );
 
+    $eventNumberField = self::requireEventInfoField(
+      $ids['event_number_field_id'],
+      (int) $eventInfoGroup['id'],
+      'String',
+      'Text',
+      'Veranstaltungsnummer-Feld'
+    );
+    $departurePortField = self::requireEventInfoField(
+      $ids['departure_port_field_id'],
+      (int) $eventInfoGroup['id'],
+      'String',
+      'Text',
+      'Abfahrtshafen-Feld'
+    );
+    $routeField = self::requireEventInfoField(
+      $ids['route_field_id'],
+      (int) $eventInfoGroup['id'],
+      'String',
+      'Text',
+      'Routen-Feld'
+    );
+    $arrivalPortField = self::requireEventInfoField(
+      $ids['arrival_port_field_id'],
+      (int) $eventInfoGroup['id'],
+      'String',
+      'Text',
+      'Ankunftshafen-Feld'
+    );
+    $crewOnBoardField = self::requireEventInfoField(
+      $ids['crew_on_board_field_id'],
+      (int) $eventInfoGroup['id'],
+      'Date',
+      'Select Date',
+      'Stamm-an-Bord-Feld',
+      TRUE
+    );
+    $crewOffBoardField = self::requireEventInfoField(
+      $ids['crew_off_board_field_id'],
+      (int) $eventInfoGroup['id'],
+      'Date',
+      'Select Date',
+      'Stamm-von-Bord-Feld',
+      TRUE
+    );
+    $organizerField = self::requireEventInfoField(
+      $ids['organizer_field_id'],
+      (int) $eventInfoGroup['id'],
+      'ContactReference',
+      'Autocomplete-Select',
+      'Organisator-Feld'
+    );
+    $commentField = self::requireEventInfoField(
+      $ids['comment_field_id'],
+      (int) $eventInfoGroup['id'],
+      'Memo',
+      'TextArea',
+      'Kommentar-Feld'
+    );
+
+    $eventInfoFieldIds = [
+      $ids['event_number_field_id'],
+      $ids['departure_port_field_id'],
+      $ids['route_field_id'],
+      $ids['arrival_port_field_id'],
+      $ids['crew_on_board_field_id'],
+      $ids['crew_off_board_field_id'],
+      $ids['organizer_field_id'],
+      $ids['comment_field_id'],
+    ];
+    if (count(array_unique($eventInfoFieldIds)) !== count($eventInfoFieldIds)) {
+      throw new \RuntimeException(
+        'Jedes Veranstaltungsinformationsfeld darf nur einmal zugeordnet werden.'
+      );
+    }
+
     return [
       'settings' => [
         'moeve_crewing_role_option_group' => (string) $optionGroup['name'],
+        'moeve_crewing_candidate_role' => (string) $candidateRole['name'],
         'moeve_crewing_individual_group' => (string) $individualGroup['name'],
         'moeve_crewing_capabilities_field' => (string) $capabilitiesField['name'],
         'moeve_crewing_participant_group' => (string) $participantGroup['name'],
         'moeve_crewing_preferences_field' => (string) $preferencesField['name'],
+        'moeve_crewing_event_info_group' => (string) $eventInfoGroup['name'],
+        'moeve_crewing_event_number_field' => (string) $eventNumberField['name'],
+        'moeve_crewing_departure_port_field' => (string) $departurePortField['name'],
+        'moeve_crewing_route_field' => (string) $routeField['name'],
+        'moeve_crewing_arrival_port_field' => (string) $arrivalPortField['name'],
+        'moeve_crewing_crew_on_board_field' => (string) $crewOnBoardField['name'],
+        'moeve_crewing_crew_off_board_field' => (string) $crewOffBoardField['name'],
+        'moeve_crewing_organizer_field' => (string) $organizerField['name'],
+        'moeve_crewing_comment_field' => (string) $commentField['name'],
         'moeve_crewing_event_group' => (string) $eventGroup['name'],
       ],
       'messages' => [
         sprintf('gespeichert: Rollengruppe %s', (string) $optionGroup['name']),
+        sprintf('gespeichert: Rolle für potentielle Crewmitglieder %s', (string) $candidateRole['name']),
         sprintf('gespeichert: Personen-Feldgruppe %s', (string) $individualGroup['name']),
         sprintf('gespeichert: Fähigkeiten-Feld %s', (string) $capabilitiesField['name']),
         sprintf('gespeichert: Teilnahme-Feldgruppe %s', (string) $participantGroup['name']),
         sprintf('gespeichert: Wunschfunktionen-Feld %s', (string) $preferencesField['name']),
-        sprintf('gespeichert: Veranstaltungs-Feldgruppe %s', (string) $eventGroup['name']),
+        sprintf('gespeichert: Veranstaltungsinfo-Feldgruppe %s', (string) $eventInfoGroup['name']),
+        sprintf('gespeichert: Veranstaltungsnummer-Feld %s', (string) $eventNumberField['name']),
+        sprintf('gespeichert: Abfahrtshafen-Feld %s', (string) $departurePortField['name']),
+        sprintf('gespeichert: Routen-Feld %s', (string) $routeField['name']),
+        sprintf('gespeichert: Ankunftshafen-Feld %s', (string) $arrivalPortField['name']),
+        sprintf('gespeichert: Stamm-an-Bord-Feld %s', (string) $crewOnBoardField['name']),
+        sprintf('gespeichert: Stamm-von-Bord-Feld %s', (string) $crewOffBoardField['name']),
+        sprintf('gespeichert: Organisator-Feld %s', (string) $organizerField['name']),
+        sprintf('gespeichert: Kommentar-Feld %s', (string) $commentField['name']),
+        sprintf('gespeichert: Besetzungsbedarf-Feldgruppe %s', (string) $eventGroup['name']),
       ],
       'ids' => $ids,
     ];
@@ -358,6 +566,53 @@ final class ExistingConfigurationManager {
   }
 
   /**
+   * @return array<string, mixed>
+   */
+  private static function requireEventInfoField(
+    int $id,
+    int $groupId,
+    string $dataType,
+    string $htmlType,
+    string $label,
+    bool $requireTime = FALSE
+  ): array {
+    $field = CustomField::get(FALSE)
+      ->addSelect(
+        'id',
+        'name',
+        'custom_group_id',
+        'data_type',
+        'html_type',
+        'time_format'
+      )
+      ->addWhere('id', '=', $id)
+      ->addWhere('is_active', '=', TRUE)
+      ->execute()
+      ->first();
+
+    if (!$field) {
+      throw new \RuntimeException(sprintf(
+        '%s wurde nicht gefunden oder ist inaktiv.',
+        $label
+      ));
+    }
+
+    if (
+      (int) $field['custom_group_id'] !== $groupId
+      || (string) $field['data_type'] !== $dataType
+      || (string) $field['html_type'] !== $htmlType
+      || ($requireTime && (int) ($field['time_format'] ?? 0) < 1)
+    ) {
+      throw new \RuntimeException(sprintf(
+        '%s gehört nicht zur ausgewählten Veranstaltungsinfo-Gruppe oder besitzt keinen kompatiblen Feldtyp.',
+        $label
+      ));
+    }
+
+    return $field;
+  }
+
+  /**
    * @param array<string, string> $baseIds
    * @return array{
    *   rows: array<int, array<string, string>>,
@@ -370,6 +625,7 @@ final class ExistingConfigurationManager {
   private static function getRoleFormData(array $baseIds): array {
     $optionGroupId = (string) ($baseIds['role_option_group_id'] ?? '');
     $eventGroupId = (string) ($baseIds['event_group_id'] ?? '');
+    $candidateRoleId = (string) ($baseIds['candidate_role_id'] ?? '');
     $defaults = [
       'role_source_option_group_id' => $optionGroupId,
       'role_source_event_group_id' => $eventGroupId,
@@ -418,6 +674,10 @@ final class ExistingConfigurationManager {
     foreach ($roleOptions as $option) {
       $optionId = (string) $option['id'];
       $optionName = (string) $option['name'];
+      if ($optionId === $candidateRoleId) {
+        unset($unmatchedRoles[$optionName]);
+        continue;
+      }
       $configuredRole = $mapping[$optionName] ?? NULL;
       $useElement = 'role_use_' . $optionId;
       $enabledElement = 'role_enabled_field_' . $optionId;
@@ -506,7 +766,8 @@ final class ExistingConfigurationManager {
   private static function validateRoleMapping(
     array $values,
     int $optionGroupId,
-    int $eventGroupId
+    int $eventGroupId,
+    int $candidateRoleId
   ): array {
     $roleOptions = self::getRoleOptions($optionGroupId);
     $eventFields = self::getEventRoleFields($eventGroupId);
@@ -518,6 +779,9 @@ final class ExistingConfigurationManager {
 
     foreach ($roleOptions as $option) {
       $optionId = (string) $option['id'];
+      if ((int) $option['id'] === $candidateRoleId) {
+        continue;
+      }
       if (empty($values['role_use_' . $optionId])) {
         continue;
       }
@@ -770,6 +1034,133 @@ final class ExistingConfigurationManager {
   }
 
   /**
+   * @return array{
+   *   rows: array<int, array<string, mixed>>,
+   *   defaults: array<string, string>,
+   *   errors: array<int, string>
+   * }
+   */
+  private static function getParticipantStatusFormData(): array {
+    $configured = [];
+    $errors = [];
+    $json = trim(
+      (string) \Civi::settings()->get(
+        'moeve_crewing_participant_status_colors'
+      )
+    );
+
+    if ($json !== '') {
+      try {
+        $decoded = json_decode($json, TRUE, 512, JSON_THROW_ON_ERROR);
+        if (!is_array($decoded)) {
+          throw new \RuntimeException(
+            'Die gespeicherten Statusfarben besitzen kein gültiges Format.'
+          );
+        }
+        $configured = $decoded;
+      }
+      catch (\JsonException $exception) {
+        $errors[] = 'Die gespeicherten Statusfarben enthalten ungültiges JSON.';
+      }
+      catch (\RuntimeException $exception) {
+        $errors[] = $exception->getMessage();
+      }
+    }
+
+    $rows = [];
+    $defaults = [];
+    foreach (
+      ParticipantStatusType::get(FALSE)
+        ->addSelect('id', 'name', 'label', 'class', 'is_active', 'weight')
+        ->addOrderBy('weight', 'ASC')
+        ->execute() as $status
+    ) {
+      $name = (string) $status['name'];
+      $class = (string) ($status['class'] ?? '');
+      $element = 'status_color_' . (string) $status['id'];
+      $color = $configured[$name] ?? NULL;
+      if (!is_string($color) || !preg_match('/^#[0-9A-Fa-f]{6}$/D', $color)) {
+        if ($color !== NULL) {
+          $errors[] = sprintf(
+            'Für den Teilnahmestatus „%s“ ist keine gültige Farbe gespeichert.',
+            (string) ($status['label'] ?? $name)
+          );
+        }
+        $color = DefaultConfiguration::participantStatusColor($name, $class);
+      }
+
+      $defaults[$element] = strtoupper($color);
+      $rows[] = [
+        'name' => $name,
+        'label' => (string) ($status['label'] ?? $name),
+        'class' => $class,
+        'isActive' => !empty($status['is_active']),
+        'colorElement' => $element,
+      ];
+    }
+
+    if ($rows === []) {
+      $errors[] = 'Es wurden keine Teilnahmestatus gefunden.';
+    }
+
+    return [
+      'rows' => $rows,
+      'defaults' => $defaults,
+      'errors' => array_values(array_unique($errors)),
+    ];
+  }
+
+  /**
+   * @param array<string, mixed> $values
+   * @return array{json: string, count: int}
+   */
+  private static function validateParticipantStatusColors(
+    array $values
+  ): array {
+    $colors = [];
+    foreach (
+      ParticipantStatusType::get(FALSE)
+        ->addSelect('id', 'name', 'label')
+        ->execute() as $status
+    ) {
+      $element = 'status_color_' . (string) $status['id'];
+      $color = strtoupper(trim((string) ($values[$element] ?? '')));
+      if (!preg_match('/^#[0-9A-F]{6}$/D', $color)) {
+        throw new \RuntimeException(sprintf(
+          'Bitte wählen Sie für den Teilnahmestatus „%s“ eine gültige Farbe aus.',
+          (string) ($status['label'] ?? $status['name'])
+        ));
+      }
+      $colors[(string) $status['name']] = $color;
+    }
+
+    if ($colors === []) {
+      throw new \RuntimeException(
+        'Es wurden keine Teilnahmestatus für die Farbzuordnung gefunden.'
+      );
+    }
+
+    try {
+      $json = json_encode(
+        $colors,
+        JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+      );
+    }
+    catch (\JsonException $exception) {
+      throw new \RuntimeException(
+        'Die Statusfarben konnten nicht gespeichert werden.',
+        0,
+        $exception
+      );
+    }
+
+    return [
+      'json' => $json,
+      'count' => count($colors),
+    ];
+  }
+
+  /**
    * @return array<string, string>
    */
   private static function getCurrentIds(): array {
@@ -789,14 +1180,26 @@ final class ExistingConfigurationManager {
       'moeve_crewing_event_group',
       DefaultConfiguration::EVENT_GROUP
     );
+    $eventInfoGroupName = self::setting(
+      'moeve_crewing_event_info_group',
+      DefaultConfiguration::EVENT_INFO_GROUP
+    );
 
     $optionGroupId = self::optionGroupId($optionGroupName);
     $individualGroupId = self::customGroupId($individualGroupName);
     $participantGroupId = self::customGroupId($participantGroupName);
     $eventGroupId = self::customGroupId($eventGroupName);
+    $eventInfoGroupId = self::customGroupId($eventInfoGroupName);
 
     return [
       'role_option_group_id' => $optionGroupId,
+      'candidate_role_id' => self::optionValueId(
+        $optionGroupId,
+        self::setting(
+          'moeve_crewing_candidate_role',
+          DefaultConfiguration::CANDIDATE_ROLE
+        )
+      ),
       'individual_group_id' => $individualGroupId,
       'capabilities_field_id' => self::customFieldId(
         $individualGroupId,
@@ -813,8 +1216,84 @@ final class ExistingConfigurationManager {
           DefaultConfiguration::PREFERENCES_FIELD
         )
       ),
+      'event_info_group_id' => $eventInfoGroupId,
+      'event_number_field_id' => self::customFieldId(
+        $eventInfoGroupId,
+        self::setting(
+          'moeve_crewing_event_number_field',
+          DefaultConfiguration::EVENT_NUMBER_FIELD
+        )
+      ),
+      'departure_port_field_id' => self::customFieldId(
+        $eventInfoGroupId,
+        self::setting(
+          'moeve_crewing_departure_port_field',
+          DefaultConfiguration::DEPARTURE_PORT_FIELD
+        )
+      ),
+      'route_field_id' => self::customFieldId(
+        $eventInfoGroupId,
+        self::setting(
+          'moeve_crewing_route_field',
+          DefaultConfiguration::ROUTE_FIELD
+        )
+      ),
+      'arrival_port_field_id' => self::customFieldId(
+        $eventInfoGroupId,
+        self::setting(
+          'moeve_crewing_arrival_port_field',
+          DefaultConfiguration::ARRIVAL_PORT_FIELD
+        )
+      ),
+      'crew_on_board_field_id' => self::customFieldId(
+        $eventInfoGroupId,
+        self::setting(
+          'moeve_crewing_crew_on_board_field',
+          DefaultConfiguration::CREW_ON_BOARD_FIELD
+        )
+      ),
+      'crew_off_board_field_id' => self::customFieldId(
+        $eventInfoGroupId,
+        self::setting(
+          'moeve_crewing_crew_off_board_field',
+          DefaultConfiguration::CREW_OFF_BOARD_FIELD
+        )
+      ),
+      'organizer_field_id' => self::customFieldId(
+        $eventInfoGroupId,
+        self::setting(
+          'moeve_crewing_organizer_field',
+          DefaultConfiguration::ORGANIZER_FIELD
+        )
+      ),
+      'comment_field_id' => self::customFieldId(
+        $eventInfoGroupId,
+        self::setting(
+          'moeve_crewing_comment_field',
+          DefaultConfiguration::COMMENT_FIELD
+        )
+      ),
       'event_group_id' => $eventGroupId,
     ];
+  }
+
+  private static function optionValueId(
+    string $optionGroupId,
+    string $name
+  ): string {
+    if ($optionGroupId === '') {
+      return '';
+    }
+
+    $record = OptionValue::get(FALSE)
+      ->addSelect('id')
+      ->addWhere('option_group_id', '=', (int) $optionGroupId)
+      ->addWhere('name', '=', $name)
+      ->addWhere('is_active', '=', TRUE)
+      ->execute()
+      ->first();
+
+    return $record ? (string) $record['id'] : '';
   }
 
   private static function optionGroupId(string $name): string {

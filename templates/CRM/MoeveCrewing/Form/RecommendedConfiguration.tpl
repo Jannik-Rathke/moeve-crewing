@@ -35,6 +35,17 @@
     <div class="clear"></div>
   </div>
   <div class="crm-section">
+    <div class="label">{$form.candidate_role_id.label}</div>
+    <div class="content">
+      {$form.candidate_role_id.html}
+      <div class="description">
+        Diese Rolle kennzeichnet eine Bewerbung vor der Zuordnung einer echten
+        Bordfunktion. Sie erhält deshalb keine Freigabe- oder Mindestanzahlfelder.
+      </div>
+    </div>
+    <div class="clear"></div>
+  </div>
+  <div class="crm-section">
     <div class="label">{$form.individual_group_id.label}</div>
     <div class="content">{$form.individual_group_id.html}</div>
     <div class="clear"></div>
@@ -54,9 +65,59 @@
     <div class="content">{$form.preferences_field_id.html}</div>
     <div class="clear"></div>
   </div>
+
+  <h3>Veranstaltungsinformationen zuordnen</h3>
+  <div class="help">
+    <p>
+      Diese Felder liefern später Reisebezeichnung, Strecke, Bordzeiten und
+      Organisation für Detail- und Jahresübersichten. Datumsfelder müssen auch
+      eine Uhrzeit speichern können.
+    </p>
+  </div>
+
   <div class="crm-section">
-    <div class="label">{$form.event_group_id.label}</div>
-    <div class="content">{$form.event_group_id.html}</div>
+    <div class="label">{$form.event_info_group_id.label}</div>
+    <div class="content">{$form.event_info_group_id.html}</div>
+    <div class="clear"></div>
+  </div>
+  <div class="crm-section">
+    <div class="label">{$form.event_number_field_id.label}</div>
+    <div class="content">{$form.event_number_field_id.html}</div>
+    <div class="clear"></div>
+  </div>
+  <div class="crm-section">
+    <div class="label">{$form.departure_port_field_id.label}</div>
+    <div class="content">{$form.departure_port_field_id.html}</div>
+    <div class="clear"></div>
+  </div>
+  <div class="crm-section">
+    <div class="label">{$form.route_field_id.label}</div>
+    <div class="content">{$form.route_field_id.html}</div>
+    <div class="clear"></div>
+  </div>
+  <div class="crm-section">
+    <div class="label">{$form.arrival_port_field_id.label}</div>
+    <div class="content">{$form.arrival_port_field_id.html}</div>
+    <div class="clear"></div>
+  </div>
+  <div class="crm-section">
+    <div class="label">{$form.crew_on_board_field_id.label}</div>
+    <div class="content">{$form.crew_on_board_field_id.html}</div>
+    <div class="clear"></div>
+  </div>
+  <div class="crm-section">
+    <div class="label">{$form.crew_off_board_field_id.label}</div>
+    <div class="content">{$form.crew_off_board_field_id.html}</div>
+    <div class="clear"></div>
+  </div>
+  <div class="crm-section">
+    <div class="label">{$form.organizer_field_id.label}</div>
+    <div class="content">{$form.organizer_field_id.html}</div>
+    <div class="clear"></div>
+  </div>
+  <div class="crm-section">
+    <div class="label">{$form.comment_field_id.label}</div>
+    <div class="content">{$form.comment_field_id.html}</div>
     <div class="clear"></div>
   </div>
 
@@ -82,6 +143,12 @@
       Wenn Sie oben die Rollen-Optionsgruppe oder die Veranstaltungsgruppe ändern,
       speichern Sie zunächst die Basiszuordnung und laden Sie anschließend die Seite neu.
     </p>
+  </div>
+
+  <div class="crm-section">
+    <div class="label">{$form.event_group_id.label}</div>
+    <div class="content">{$form.event_group_id.html}</div>
+    <div class="clear"></div>
   </div>
 
   {$form.role_source_option_group_id.html}
@@ -133,6 +200,59 @@
     </table>
   {/if}
 
+  <h3>Statusfarben für die Jahresübersicht</h3>
+  <div class="help">
+    <p>
+      Die Personen-Jahresübersicht verwendet diese Farben für den jeweiligen
+      Teilnahmestatus. Die Zuordnung folgt dem technischen Statusnamen und bleibt
+      deshalb auch dann stabil, wenn Bezeichnungen übersetzt oder Datenbank-IDs
+      unterschiedlich sind. „Registriert“ ist standardmäßig blau.
+    </p>
+  </div>
+
+  {if $statusColorsAreValid}
+    <div class="messages status no-popup">
+      <div class="icon inform-icon"></div>
+      <p><strong>Statusfarben gültig:</strong> Für alle Teilnahmestatus ist eine Farbe hinterlegt.</p>
+    </div>
+  {else}
+    <div class="messages warning no-popup">
+      <div class="icon warning-icon"></div>
+      <p><strong>Statusfarben werden auf sichere Standardwerte zurückgesetzt:</strong></p>
+      <ul>
+        {foreach from=$statusColorErrors item=statusColorError}
+          <li>{$statusColorError|escape}</li>
+        {/foreach}
+      </ul>
+    </div>
+  {/if}
+
+  {if $statusRows}
+    <table class="selector row-highlight moeve-status-colors">
+      <thead>
+        <tr>
+          <th>Teilnahmestatus</th>
+          <th>Technischer Name</th>
+          <th>Klasse</th>
+          <th>Verfügbarkeit</th>
+          <th>Farbe</th>
+        </tr>
+      </thead>
+      <tbody>
+        {foreach from=$statusRows item=statusRow}
+          {assign var=colorElement value=$statusRow.colorElement}
+          <tr>
+            <td><strong>{$statusRow.label|escape}</strong></td>
+            <td><code>{$statusRow.name|escape}</code></td>
+            <td>{$statusRow.class|escape}</td>
+            <td>{if $statusRow.isActive}aktiv{else}inaktiv{/if}</td>
+            <td>{$form.$colorElement.html}</td>
+          </tr>
+        {/foreach}
+      </tbody>
+    </table>
+  {/if}
+
   <h3>Empfohlene Möwe-Crewing-Konfiguration</h3>
   <div class="help">
     <p>
@@ -176,3 +296,21 @@
     </details>
   {/if}
 </div>
+
+{literal}
+<style>
+  .crm-moeve-crewing-setup-form-block .moeve-status-colors input[type="color"] {
+    box-sizing: border-box;
+    cursor: pointer;
+    height: 2.25rem;
+    padding: 0.15rem;
+    width: 4.5rem;
+  }
+</style>
+<script>
+  CRM.$(function($) {
+    $('.crm-moeve-crewing-setup-form-block .moeve-status-color')
+      .attr('type', 'color');
+  });
+</script>
+{/literal}

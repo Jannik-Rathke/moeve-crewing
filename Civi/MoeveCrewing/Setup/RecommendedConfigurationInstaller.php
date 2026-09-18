@@ -10,12 +10,11 @@ use Civi\Api4\OptionGroup;
 use Civi\Api4\OptionValue;
 use Civi\MoeveCrewing\Configuration\DefaultConfiguration;
 
-/**
- * Creates the recommended configuration without modifying existing records.
- */
 final class RecommendedConfigurationInstaller {
 
   /**
+   * Create missing recommended configuration without changing existing items.
+   *
    * @return array<int, string>
    */
   public static function install(): array {
@@ -26,7 +25,6 @@ final class RecommendedConfigurationInstaller {
       'moeve_crewing_role_option_group',
       DefaultConfiguration::ROLE_OPTION_GROUP
     );
-
     $optionGroup = OptionGroup::get(FALSE)
       ->addSelect('id', 'name')
       ->addWhere('name', '=', $optionGroupName)
@@ -41,24 +39,29 @@ final class RecommendedConfigurationInstaller {
     }
 
     $optionGroupId = (int) $optionGroup['id'];
-    self::ensureRoleOptions($optionGroupId, $roles, $messages);
+    $candidateRoleName = self::setting(
+      'moeve_crewing_candidate_role',
+      DefaultConfiguration::CANDIDATE_ROLE
+    );
+    $candidateRoleLabel = isset($roles[$candidateRoleName]['label'])
+      ? (string) $roles[$candidateRoleName]['label']
+      : 'potentielles Crewmitglied';
+    unset($roles[$candidateRoleName]);
+    $roleOptions = $roles;
+    $roleOptions[$candidateRoleName] = [
+      'label' => $candidateRoleLabel,
+    ];
+    self::ensureRoleOptions($optionGroupId, $roleOptions, $messages);
 
-    $individualGroupId = self::ensureCustomGroup(
-      self::setting(
-        'moeve_crewing_individual_group',
-        DefaultConfiguration::INDIVIDUAL_GROUP
-      ),
+    $individualGroup = self::ensureCustomGroup(
+      self::setting('moeve_crewing_individual_group', DefaultConfiguration::INDIVIDUAL_GROUP),
       'Crewing – Fähigkeiten',
       'Individual',
       $messages
     );
-
     self::ensureCustomField(
-      $individualGroupId,
-      self::setting(
-        'moeve_crewing_capabilities_field',
-        DefaultConfiguration::CAPABILITIES_FIELD
-      ),
+      $individualGroup,
+      self::setting('moeve_crewing_capabilities_field', DefaultConfiguration::CAPABILITIES_FIELD),
       'Meine Fähigkeiten',
       'Int',
       'CheckBox',
@@ -69,22 +72,15 @@ final class RecommendedConfigurationInstaller {
       10
     );
 
-    $participantGroupId = self::ensureCustomGroup(
-      self::setting(
-        'moeve_crewing_participant_group',
-        DefaultConfiguration::PARTICIPANT_GROUP
-      ),
+    $participantGroup = self::ensureCustomGroup(
+      self::setting('moeve_crewing_participant_group', DefaultConfiguration::PARTICIPANT_GROUP),
       'Crewing – gewünschte Funktionen',
       'Participant',
       $messages
     );
-
     self::ensureCustomField(
-      $participantGroupId,
-      self::setting(
-        'moeve_crewing_preferences_field',
-        DefaultConfiguration::PREFERENCES_FIELD
-      ),
+      $participantGroup,
+      self::setting('moeve_crewing_preferences_field', DefaultConfiguration::PREFERENCES_FIELD),
       'Gewünschte Funktionen an Bord',
       'Int',
       'CheckBox',
@@ -95,21 +91,163 @@ final class RecommendedConfigurationInstaller {
       10
     );
 
-    $eventGroupId = self::ensureCustomGroup(
+    $eventInfoGroup = self::ensureCustomGroup(
       self::setting(
-        'moeve_crewing_event_group',
-        DefaultConfiguration::EVENT_GROUP
+        'moeve_crewing_event_info_group',
+        DefaultConfiguration::EVENT_INFO_GROUP
       ),
+      'Veranstaltungsinfo',
+      'Event',
+      $messages
+    );
+
+    self::ensureCustomField(
+      $eventInfoGroup,
+      self::setting(
+        'moeve_crewing_event_number_field',
+        DefaultConfiguration::EVENT_NUMBER_FIELD
+      ),
+      'Veranstaltungsnummer',
+      'String',
+      'Text',
+      TRUE,
+      $messages,
+      NULL,
+      0,
+      10,
+      ['help_pre' => 'Kann automatisch generiert werden']
+    );
+    self::ensureCustomField(
+      $eventInfoGroup,
+      self::setting(
+        'moeve_crewing_departure_port_field',
+        DefaultConfiguration::DEPARTURE_PORT_FIELD
+      ),
+      'Hafen von',
+      'String',
+      'Text',
+      TRUE,
+      $messages,
+      NULL,
+      0,
+      20
+    );
+    self::ensureCustomField(
+      $eventInfoGroup,
+      self::setting(
+        'moeve_crewing_route_field',
+        DefaultConfiguration::ROUTE_FIELD
+      ),
+      'Route',
+      'String',
+      'Text',
+      TRUE,
+      $messages,
+      NULL,
+      0,
+      30
+    );
+    self::ensureCustomField(
+      $eventInfoGroup,
+      self::setting(
+        'moeve_crewing_arrival_port_field',
+        DefaultConfiguration::ARRIVAL_PORT_FIELD
+      ),
+      'Hafen bis',
+      'String',
+      'Text',
+      TRUE,
+      $messages,
+      NULL,
+      0,
+      40
+    );
+    self::ensureCustomField(
+      $eventInfoGroup,
+      self::setting(
+        'moeve_crewing_crew_on_board_field',
+        DefaultConfiguration::CREW_ON_BOARD_FIELD
+      ),
+      'Stamm an Bord',
+      'Date',
+      'Select Date',
+      TRUE,
+      $messages,
+      NULL,
+      0,
+      50,
+      [
+        'date_format' => 'dd.mm.yy',
+        'time_format' => 2,
+      ],
+      ['time_format' => 2]
+    );
+    self::ensureCustomField(
+      $eventInfoGroup,
+      self::setting(
+        'moeve_crewing_crew_off_board_field',
+        DefaultConfiguration::CREW_OFF_BOARD_FIELD
+      ),
+      'Stamm von Bord',
+      'Date',
+      'Select Date',
+      TRUE,
+      $messages,
+      NULL,
+      0,
+      60,
+      [
+        'date_format' => 'dd.mm.yy',
+        'time_format' => 2,
+      ],
+      ['time_format' => 2]
+    );
+    self::ensureCustomField(
+      $eventInfoGroup,
+      self::setting(
+        'moeve_crewing_organizer_field',
+        DefaultConfiguration::ORGANIZER_FIELD
+      ),
+      'Organisator',
+      'ContactReference',
+      'Autocomplete-Select',
+      TRUE,
+      $messages,
+      NULL,
+      0,
+      70
+    );
+    self::ensureCustomField(
+      $eventInfoGroup,
+      self::setting(
+        'moeve_crewing_comment_field',
+        DefaultConfiguration::COMMENT_FIELD
+      ),
+      'Kommentar',
+      'Memo',
+      'TextArea',
+      FALSE,
+      $messages,
+      NULL,
+      0,
+      80,
+      [
+        'note_rows' => 4,
+        'note_columns' => 60,
+      ]
+    );
+
+    $eventGroup = self::ensureCustomGroup(
+      self::setting('moeve_crewing_event_group', DefaultConfiguration::EVENT_GROUP),
       'Crewing – Besetzungsbedarf',
       'Event',
       $messages
     );
 
     $weight = 10;
-
     foreach ($roles as $role) {
       self::ensureCustomField(
-        $eventGroupId,
+        $eventGroup,
         $role['enabled_field'],
         $role['label'] . ' freischalten',
         'Boolean',
@@ -120,9 +258,8 @@ final class RecommendedConfigurationInstaller {
         0,
         $weight++
       );
-
       self::ensureCustomField(
-        $eventGroupId,
+        $eventGroup,
         $role['minimum_field'],
         'Mindestanzahl ' . $role['label'],
         'Int',
@@ -139,17 +276,10 @@ final class RecommendedConfigurationInstaller {
   }
 
   /**
-   * @return array<string, array{
-   *   label: string,
-   *   enabled_field: string,
-   *   minimum_field: string
-   * }>
+   * @return array<string, array{label: string, enabled_field: string, minimum_field: string}>
    */
   private static function getRoleMapping(): array {
-    $json = trim(
-      (string) \Civi::settings()->get('moeve_crewing_role_mapping')
-    );
-
+    $json = trim((string) \Civi::settings()->get('moeve_crewing_role_mapping'));
     if ($json === '') {
       return DefaultConfiguration::roles();
     }
@@ -166,26 +296,15 @@ final class RecommendedConfigurationInstaller {
     }
 
     if (!is_array($roles) || $roles === []) {
-      throw new \RuntimeException(
-        'The configured role mapping must contain at least one role.'
-      );
+      throw new \RuntimeException('The configured role mapping must contain at least one role.');
     }
 
     foreach ($roles as $name => $role) {
       if (!is_string($name) || !is_array($role)) {
-        throw new \RuntimeException(
-          'Every role mapping needs a technical role name.'
-        );
+        throw new \RuntimeException('Every role mapping needs a technical role name.');
       }
-
-      foreach (
-        ['label', 'enabled_field', 'minimum_field'] as $requiredKey
-      ) {
-        if (
-          !isset($role[$requiredKey])
-          || !is_string($role[$requiredKey])
-          || $role[$requiredKey] === ''
-        ) {
+      foreach (['label', 'enabled_field', 'minimum_field'] as $requiredKey) {
+        if (!isset($role[$requiredKey]) || !is_string($role[$requiredKey]) || $role[$requiredKey] === '') {
           throw new \RuntimeException(sprintf(
             'Role "%s" is missing the value "%s".',
             $name,
@@ -199,18 +318,10 @@ final class RecommendedConfigurationInstaller {
   }
 
   /**
-   * @param array<string, array{
-   *   label: string,
-   *   enabled_field: string,
-   *   minimum_field: string
-   * }> $roles
+   * @param array<string, array{label: string}> $roles
    * @param array<int, string> $messages
    */
-  private static function ensureRoleOptions(
-    int $optionGroupId,
-    array $roles,
-    array &$messages
-  ): void {
+  private static function ensureRoleOptions(int $optionGroupId, array $roles, array &$messages): void {
     $existing = OptionValue::get(FALSE)
       ->addSelect('id', 'name', 'value', 'weight')
       ->addWhere('option_group_id', '=', $optionGroupId)
@@ -219,23 +330,16 @@ final class RecommendedConfigurationInstaller {
     $names = [];
     $usedValues = [];
     $maxWeight = 0;
-
     foreach ($existing as $option) {
       $names[(string) $option['name']] = TRUE;
-
       $value = (string) $option['value'];
       if (ctype_digit($value)) {
         $usedValues[(int) $value] = TRUE;
       }
-
-      $maxWeight = max(
-        $maxWeight,
-        (int) ($option['weight'] ?? 0)
-      );
+      $maxWeight = max($maxWeight, (int) ($option['weight'] ?? 0));
     }
 
     $nextValue = 1;
-
     foreach ($roles as $name => $role) {
       if (isset($names[$name])) {
         $messages[] = sprintf('vorhanden: Rolle %s', $name);
@@ -280,18 +384,13 @@ final class RecommendedConfigurationInstaller {
     if ($existing) {
       if ((string) $existing['extends'] !== $extends) {
         throw new \RuntimeException(sprintf(
-          'Custom group "%s" extends "%s" instead of "%s".',
+          'Custom group "%s" exists but extends "%s" instead of "%s".',
           $name,
           (string) $existing['extends'],
           $extends
         ));
       }
-
-      $messages[] = sprintf(
-        'vorhanden: Feldgruppe %s',
-        $name
-      );
-
+      $messages[] = sprintf('vorhanden: Feldgruppe %s', $name);
       return (int) $existing['id'];
     }
 
@@ -306,17 +405,10 @@ final class RecommendedConfigurationInstaller {
       ->first();
 
     if (!$created) {
-      throw new \RuntimeException(sprintf(
-        'Could not create custom group "%s".',
-        $name
-      ));
+      throw new \RuntimeException(sprintf('Could not create custom group "%s".', $name));
     }
 
-    $messages[] = sprintf(
-      'erstellt: Feldgruppe %s',
-      $name
-    );
-
+    $messages[] = sprintf('erstellt: Feldgruppe %s', $name);
     return (int) $created['id'];
   }
 
@@ -333,17 +425,26 @@ final class RecommendedConfigurationInstaller {
     array &$messages,
     ?int $optionGroupId = NULL,
     int $serialize = 0,
-    int $weight = 1
+    int $weight = 1,
+    array $extraValues = [],
+    array $compatibilityValues = []
   ): void {
+    $select = [
+      'id',
+      'name',
+      'data_type',
+      'html_type',
+      'option_group_id',
+      'serialize',
+    ];
+    foreach (array_keys($compatibilityValues) as $fieldName) {
+      if (!in_array($fieldName, $select, TRUE)) {
+        $select[] = $fieldName;
+      }
+    }
+
     $existing = CustomField::get(FALSE)
-      ->addSelect(
-        'id',
-        'name',
-        'data_type',
-        'html_type',
-        'option_group_id',
-        'serialize'
-      )
+      ->addSelect(...$select)
       ->addWhere('custom_group_id', '=', $customGroupId)
       ->addWhere('name', '=', $name)
       ->execute()
@@ -353,7 +454,6 @@ final class RecommendedConfigurationInstaller {
       $existingOptionGroupId = isset($existing['option_group_id'])
         ? (int) $existing['option_group_id']
         : NULL;
-
       if (
         (string) $existing['data_type'] !== $dataType
         || (string) $existing['html_type'] !== $htmlType
@@ -361,16 +461,22 @@ final class RecommendedConfigurationInstaller {
         || (int) ($existing['serialize'] ?? 0) !== $serialize
       ) {
         throw new \RuntimeException(sprintf(
-          'Custom field "%s" has an incompatible configuration.',
-          $name
+          'Custom field "%s" exists with incompatible type %s/%s.',
+          $name,
+          (string) $existing['data_type'],
+          (string) $existing['html_type']
         ));
       }
-
-      $messages[] = sprintf(
-        'vorhanden: Feld %s',
-        $name
-      );
-
+      foreach ($compatibilityValues as $fieldName => $expectedValue) {
+        if (($existing[$fieldName] ?? NULL) != $expectedValue) {
+          throw new \RuntimeException(sprintf(
+            'Custom field "%s" has an incompatible value for "%s".',
+            $name,
+            $fieldName
+          ));
+        }
+      }
+      $messages[] = sprintf('vorhanden: Feld %s', $name);
       return;
     }
 
@@ -387,28 +493,18 @@ final class RecommendedConfigurationInstaller {
       ->addValue('weight', $weight);
 
     if ($optionGroupId !== NULL) {
-      $create->addValue(
-        'option_group_id',
-        $optionGroupId
-      );
+      $create->addValue('option_group_id', $optionGroupId);
+    }
+    foreach ($extraValues as $fieldName => $value) {
+      $create->addValue($fieldName, $value);
     }
 
     $create->execute();
-
-    $messages[] = sprintf(
-      'erstellt: Feld %s',
-      $name
-    );
+    $messages[] = sprintf('erstellt: Feld %s', $name);
   }
 
-  private static function setting(
-    string $name,
-    string $fallback
-  ): string {
-    $value = trim(
-      (string) \Civi::settings()->get($name)
-    );
-
+  private static function setting(string $name, string $fallback): string {
+    $value = trim((string) \Civi::settings()->get($name));
     return $value !== '' ? $value : $fallback;
   }
 

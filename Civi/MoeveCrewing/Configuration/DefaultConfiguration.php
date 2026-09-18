@@ -13,16 +13,30 @@ namespace Civi\MoeveCrewing\Configuration;
 final class DefaultConfiguration {
 
   public const ROLE_OPTION_GROUP = 'participant_role';
+  public const CANDIDATE_ROLE = 'potentielles Crewmitglied';
 
   public const INDIVIDUAL_GROUP = 'moeve_crewing_individual';
   public const PARTICIPANT_GROUP = 'moeve_crewing_participant';
   public const EVENT_GROUP = 'moeve_crewing_event';
+  public const EVENT_INFO_GROUP = 'moeve_crewing_event_info';
 
   public const CAPABILITIES_FIELD = 'faehigkeiten';
   public const PREFERENCES_FIELD = 'gewuenschte_funktionen';
 
+  public const EVENT_NUMBER_FIELD = 'veranstaltungsnummer';
+  public const DEPARTURE_PORT_FIELD = 'hafen_von';
+  public const ROUTE_FIELD = 'route';
+  public const ARRIVAL_PORT_FIELD = 'hafen_bis';
+  public const CREW_ON_BOARD_FIELD = 'stamm_an_bord';
+  public const CREW_OFF_BOARD_FIELD = 'stamm_von_bord';
+  public const ORGANIZER_FIELD = 'organisator';
+  public const COMMENT_FIELD = 'kommentar';
+
   /**
    * Default role-to-field mapping.
+   *
+   * The candidate role is deliberately not part of this map: it represents
+   * an application state and must not receive demand fields on events.
    *
    * @return array<string, array<string, string>>
    */
@@ -94,6 +108,36 @@ final class DefaultConfiguration {
         'minimum_field' => 'mindestanzahlBordarzt',
       ],
     ];
+  }
+
+  /**
+   * Determine a sensible initial colour for a participant status.
+   */
+  public static function participantStatusColor(
+    string $name,
+    string $class
+  ): string {
+    $byName = [
+      'Registered' => '#2563EB',
+      'Attended' => '#16A34A',
+      'No-show' => '#DC2626',
+      'Cancelled' => '#DC2626',
+      'Rejected' => '#DC2626',
+      'Expired' => '#64748B',
+      'Transferred' => '#64748B',
+    ];
+
+    if (isset($byName[$name])) {
+      return $byName[$name];
+    }
+
+    return match ($class) {
+      'Pending' => '#F59E0B',
+      'Waiting' => '#EAB308',
+      'Negative' => '#DC2626',
+      'Positive' => '#2563EB',
+      default => '#64748B',
+    };
   }
 
 }
