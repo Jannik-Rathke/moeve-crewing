@@ -7,6 +7,12 @@
     <access_arguments>administer CiviCRM</access_arguments>
   </item>
   <item>
+    <path>civicrm/moeve-crewing/application</path>
+    <page_callback>CRM_MoeveCrewing_Form_ApplicationDecision</page_callback>
+    <title>Crewing-Bewerbung bearbeiten</title>
+    <access_arguments>administer CiviCRM</access_arguments>
+  </item>
+  <item>
     <path>civicrm/admin/moeve-crewing/setup</path>
     <page_callback>CRM_MoeveCrewing_Form_RecommendedConfiguration</page_callback>
     <title>M&#xF6;we Crewing &#x2013; Einrichtung</title>

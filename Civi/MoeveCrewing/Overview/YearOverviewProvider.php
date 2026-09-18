@@ -222,6 +222,10 @@ final class YearOverviewProvider {
             'context' => 'participant',
           ], '', '&', PHP_QUERY_RFC3986)
         ),
+        'decisionUrl' => \CRM_Utils_System::url(
+          'civicrm/moeve-crewing/application',
+          'reset=1&id=' . $participantId
+        ),
         'status' => $participant['status'],
         'isCandidate' => (bool) $participant['isCandidate'],
         'preferences' => $preferenceLabels,

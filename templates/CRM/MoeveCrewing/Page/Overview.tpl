@@ -160,8 +160,11 @@
                     </td>
                     <td>
                       <div class="moeve-action-list">
+                        <a href="{$application.decisionUrl|escape}" class="crm-button">
+                          Entscheiden
+                        </a>
                         <a href="{$application.participantUrl|escape}" class="crm-button">
-                          Teilnahme
+                          Details
                         </a>
                         <a href="{$application.contactUrl|escape}" class="crm-button">
                           Kontakt
