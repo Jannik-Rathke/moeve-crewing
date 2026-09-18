@@ -9,7 +9,255 @@
     {/foreach}
   </nav>
 
-  {if $activeView eq 'voyages'}
+  {if $activeView eq 'cockpit'}
+    <section class="crm-block crm-content-block moeve-cockpit-controls">
+      <form method="get" action="{crmURL p='civicrm/moeve-crewing'}">
+        <input type="hidden" name="reset" value="1">
+        <input type="hidden" name="view" value="cockpit">
+        <label for="moeve-cockpit-year"><strong>Planungsjahr</strong></label>
+        <select id="moeve-cockpit-year" name="year">
+          {foreach from=$availableYears item=year}
+            <option value="{$year|escape}"{if $year eq $selectedYear} selected{/if}>
+              {$year|escape}
+            </option>
+          {/foreach}
+        </select>
+        <button type="submit" class="crm-button">Anzeigen</button>
+      </form>
+    </section>
+
+    {if $pageError}
+      <div class="messages error no-popup">
+        <div class="icon error-icon"></div>
+        <p>{$pageError|escape}</p>
+      </div>
+    {else}
+      <section class="moeve-summary" aria-label="Zusammenfassung Cockpit">
+        <div class="moeve-summary-card">
+          <span class="moeve-summary-value">{$cockpitSummary.upcomingEventCount|escape}</span>
+          <span class="moeve-summary-label">Kommende Törns</span>
+        </div>
+        <div class="moeve-summary-card">
+          <span class="moeve-summary-value">{$cockpitSummary.requiredCount|escape}</span>
+          <span class="moeve-summary-label">Soll-Plätze</span>
+        </div>
+        <div class="moeve-summary-card is-covered">
+          <span class="moeve-summary-value">{$cockpitSummary.confirmedCount|escape}</span>
+          <span class="moeve-summary-label">Bestätigt</span>
+        </div>
+        <div class="moeve-summary-card is-attention">
+          <span class="moeve-summary-value">{$cockpitSummary.openCount|escape}</span>
+          <span class="moeve-summary-label">Offene Plätze</span>
+        </div>
+        <div class="moeve-summary-card is-pending">
+          <span class="moeve-summary-value">{$cockpitSummary.applicationCount|escape}</span>
+          <span class="moeve-summary-label">Bewerbungen</span>
+        </div>
+      </section>
+
+      <section class="moeve-cockpit-alerts" aria-label="Offene Aufgaben">
+        <a href="{$cockpitUrls.voyages|escape}" class="moeve-task-card{if !$cockpitSummary.attentionEventCount} is-done{/if}">
+          <span class="moeve-task-number">{$cockpitSummary.attentionEventCount|escape}</span>
+          <span>
+            <strong>Törns mit offenem Crewbedarf</strong>
+            <small>Besetzung prüfen und vervollständigen</small>
+          </span>
+        </a>
+        <a href="{$cockpitUrls.applications|escape}" class="moeve-task-card{if !$cockpitSummary.applicationCount} is-done{/if}">
+          <span class="moeve-task-number">{$cockpitSummary.applicationCount|escape}</span>
+          <span>
+            <strong>Unbearbeitete Bewerbungen</strong>
+            <small>Funktion und Teilnahmestatus festlegen</small>
+          </span>
+        </a>
+        <a href="{$cockpitUrls.voyages|escape}" class="moeve-task-card{if !$cockpitSummary.missingInfoEventCount} is-done{/if}">
+          <span class="moeve-task-number">{$cockpitSummary.missingInfoEventCount|escape}</span>
+          <span>
+            <strong>Törns mit fehlenden Angaben</strong>
+            <small>Strecke, Bordzeiten oder Organisation ergänzen</small>
+          </span>
+        </a>
+      </section>
+
+      <div class="moeve-cockpit-layout">
+        <section class="crm-block crm-content-block moeve-cockpit-section moeve-next-voyages">
+          <div class="moeve-section-heading">
+            <div>
+              <h2>Nächste Törns</h2>
+              <p>Die nächsten laufenden oder bevorstehenden Veranstaltungen.</p>
+            </div>
+            <a href="{$cockpitUrls.voyages|escape}" class="crm-button">Alle Törns planen</a>
+          </div>
+
+          {if $cockpitVoyages}
+            <div class="moeve-cockpit-voyage-list">
+              {foreach from=$cockpitVoyages item=voyage}
+                <article class="moeve-cockpit-voyage">
+                  <div class="moeve-cockpit-voyage-main">
+                    <div class="moeve-cockpit-voyage-kicker">
+                      {if $voyage.timingLabel}
+                        <span>{$voyage.timingLabel|escape}</span>
+                      {/if}
+                      {if $voyage.event.number}
+                        <span>{$voyage.event.number|escape}</span>
+                      {/if}
+                    </div>
+                    <h3>
+                      <a href="{$voyage.voyageUrl|escape}">{$voyage.event.title|escape}</a>
+                    </h3>
+                    <p>
+                      {$voyage.event.dateTimeLabel|escape}
+                      {if $voyage.event.routeLabel}
+                        <span aria-hidden="true"> · </span>{$voyage.event.routeLabel|escape}
+                      {/if}
+                    </p>
+                    <div class="moeve-progress" style="--moeve-progress: {$voyage.completionPercent|escape}%;">
+                      <span></span>
+                    </div>
+                    <div class="moeve-cockpit-voyage-counts">
+                      <span><strong>{$voyage.summary.confirmedCount|escape}/{$voyage.summary.requiredCount|escape}</strong> bestätigt</span>
+                      <span><strong>{$voyage.summary.openCount|escape}</strong> offen</span>
+                      <span><strong>{$voyage.summary.applicationCount|escape}</strong> Bewerbungen</span>
+                    </div>
+                    {if $voyage.missingInformation}
+                      <div class="moeve-missing-info">
+                        Fehlende Angaben: {$voyage.missingInformationLabel|escape}
+                      </div>
+                    {/if}
+                  </div>
+                  <div class="moeve-cockpit-voyage-actions">
+                    <span class="moeve-state-label is-{$voyage.state|escape}">
+                      {$voyage.stateLabel|escape}
+                    </span>
+                    <a href="{$voyage.voyageUrl|escape}" class="crm-button">Planen</a>
+                    {if $voyage.summary.applicationCount}
+                      <a href="{$voyage.applicationsUrl|escape}" class="crm-button">Bewerbungen</a>
+                    {/if}
+                  </div>
+                </article>
+              {/foreach}
+            </div>
+          {else}
+            <div class="messages status no-popup">
+              <div class="icon inform-icon"></div>
+              <p>Für {$selectedYear|escape} gibt es keine kommenden Törns.</p>
+            </div>
+          {/if}
+        </section>
+
+        <section class="crm-block crm-content-block moeve-cockpit-section moeve-cockpit-applications">
+          <div class="moeve-section-heading">
+            <div>
+              <h2>Neue Bewerbungen</h2>
+              <p>Die zuletzt eingegangenen, noch nicht zugeordneten Bewerbungen.</p>
+            </div>
+            <a href="{$cockpitUrls.applications|escape}" class="crm-button">Alle Bewerbungen</a>
+          </div>
+
+          {if $cockpitApplications}
+            <ul class="moeve-cockpit-application-list">
+              {foreach from=$cockpitApplications item=application}
+                <li>
+                  <div>
+                    <a href="{$application.contactUrl|escape}" class="moeve-person-link">
+                      {$application.displayName|escape}
+                    </a>
+                    <small>
+                      {$application.eventTitle|escape}
+                      {if $application.eventDateLabel} · {$application.eventDateLabel|escape}{/if}
+                    </small>
+                    {if $application.preferences}
+                      <div class="moeve-badge-list">
+                        {foreach from=$application.preferences item=preference}
+                          <span class="moeve-badge is-preference">{$preference|escape}</span>
+                        {/foreach}
+                      </div>
+                    {else}
+                      <span class="moeve-empty-value">Keine Wunschfunktion</span>
+                    {/if}
+                  </div>
+                  <a href="{$application.decisionUrl|escape}" class="crm-button">Entscheiden</a>
+                </li>
+              {/foreach}
+            </ul>
+          {else}
+            <div class="moeve-cockpit-empty is-success">
+              <strong>Alles bearbeitet</strong>
+              <span>Aktuell warten keine Bewerbungen auf eine Zuordnung.</span>
+            </div>
+          {/if}
+        </section>
+      </div>
+
+      <section class="crm-block crm-content-block moeve-cockpit-section">
+        <div class="moeve-section-heading">
+          <div>
+            <h2>Dringendste offene Funktionen</h2>
+            <p>Nach dem Startdatum des Törns priorisiert.</p>
+          </div>
+          <a href="{$cockpitUrls.voyages|escape}" class="crm-button">Zur Törnplanung</a>
+        </div>
+
+        {if $cockpitNeeds}
+          <div class="moeve-cockpit-needs-wrap" tabindex="0">
+            <table class="selector row-highlight moeve-cockpit-needs">
+              <thead>
+                <tr>
+                  <th>Törn</th>
+                  <th>Funktion</th>
+                  <th>Soll / bestätigt</th>
+                  <th>Vorgemerkt</th>
+                  <th>Bewerbungen</th>
+                  <th>Offen</th>
+                  <th>Aktion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {foreach from=$cockpitNeeds item=need}
+                  <tr>
+                    <td>
+                      <a href="{$need.voyageUrl|escape}">{$need.eventTitle|escape}</a>
+                      <small>
+                        {if $need.eventNumber}{$need.eventNumber|escape} · {/if}{$need.eventDateLabel|escape}
+                      </small>
+                    </td>
+                    <th scope="row">{$need.roleLabel|escape}</th>
+                    <td>{$need.requiredCount|escape} / {$need.confirmedCount|escape}</td>
+                    <td>{$need.provisionalCount|escape}</td>
+                    <td>{$need.applicationCount|escape}</td>
+                    <td>
+                      <span class="moeve-state-label is-{$need.state|escape}">
+                        {$need.openCount|escape} offen
+                      </span>
+                    </td>
+                    <td>
+                      {if $need.applicationCount}
+                        <a href="{$need.applicationsUrl|escape}" class="crm-button">Bewerbungen</a>
+                      {else}
+                        <a href="{$need.voyageUrl|escape}" class="crm-button">Planen</a>
+                      {/if}
+                    </td>
+                  </tr>
+                {/foreach}
+              </tbody>
+            </table>
+          </div>
+        {else}
+          <div class="moeve-cockpit-empty is-success">
+            <strong>Alle kommenden Bedarfe sind gedeckt</strong>
+            <span>Für die ausgewählten Törns fehlen derzeit keine bestätigten Crewmitglieder.</span>
+          </div>
+        {/if}
+      </section>
+
+      <section class="moeve-cockpit-shortcuts" aria-label="Schnellzugriffe">
+        <a href="{$cockpitUrls.voyages|escape}"><strong>Törnplanung</strong><span>Besetzung je Törn bearbeiten</span></a>
+        <a href="{$cockpitUrls.applications|escape}"><strong>Bewerbungen</strong><span>Teilnahmen prüfen und zuordnen</span></a>
+        <a href="{$cockpitUrls.year|escape}"><strong>Jahresübersicht</strong><span>Bedarfe und Personen vergleichen</span></a>
+        <a href="{$cockpitUrls.setup|escape}"><strong>Einrichtung</strong><span>Felder, Rollen und Farben konfigurieren</span></a>
+      </section>
+    {/if}
+  {elseif $activeView eq 'voyages'}
     <section class="crm-block crm-content-block moeve-voyage-controls">
       <form method="get" action="{crmURL p='civicrm/moeve-crewing'}">
         <input type="hidden" name="reset" value="1">
@@ -504,15 +752,6 @@
         {/if}
       </section>
     {/if}
-  {elseif $activeView neq 'year'}
-    <section class="crm-block crm-content-block moeve-placeholder">
-      <h2>{$placeholder.title|escape}</h2>
-      <p>{$placeholder.text|escape}</p>
-      <p class="description">
-        Der Reiter ist bereits vorbereitet und wird in einer der nächsten
-        Ausbaustufen mit Funktionen gefüllt.
-      </p>
-    </section>
   {else}
     <section class="crm-block crm-content-block moeve-year-controls">
       <form method="get" action="{crmURL p='civicrm/moeve-crewing'}">
@@ -735,7 +974,8 @@
     color: #fff;
   }
 
-  .moeve-placeholder,
+  .moeve-cockpit-controls,
+  .moeve-cockpit-section,
   .moeve-voyage-controls,
   .moeve-voyage-card,
   .moeve-application-controls,
@@ -747,6 +987,7 @@
     padding: 1rem;
   }
 
+  .moeve-cockpit-controls form,
   .moeve-voyage-controls form,
   .moeve-application-controls form,
   .moeve-year-controls form {
@@ -756,6 +997,7 @@
     gap: .65rem;
   }
 
+  .moeve-cockpit-controls select,
   .moeve-voyage-controls select,
   .moeve-application-controls select {
     max-width: 24rem;
@@ -824,6 +1066,255 @@
 
   .moeve-section-heading p {
     margin: 0 0 .75rem;
+  }
+
+  .moeve-cockpit-alerts {
+    display: grid;
+    gap: .75rem;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    margin: 0 0 1rem;
+  }
+
+  .moeve-task-card {
+    align-items: center;
+    background: #fff7ed;
+    border: 1px solid #fdba74;
+    border-radius: .45rem;
+    color: #7c2d12;
+    display: flex;
+    gap: .75rem;
+    padding: .8rem;
+    text-decoration: none;
+  }
+
+  .moeve-task-card:hover,
+  .moeve-task-card:focus {
+    box-shadow: 0 0 0 2px #0284c7;
+  }
+
+  .moeve-task-card.is-done {
+    background: #f0fdf4;
+    border-color: #86efac;
+    color: #166534;
+  }
+
+  .moeve-task-number {
+    align-items: center;
+    background: rgba(255, 255, 255, .8);
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    display: inline-flex;
+    flex: 0 0 2.35rem;
+    font-size: 1.15rem;
+    font-weight: 800;
+    height: 2.35rem;
+    justify-content: center;
+  }
+
+  .moeve-task-card strong,
+  .moeve-task-card small {
+    display: block;
+  }
+
+  .moeve-task-card small {
+    margin-top: .15rem;
+  }
+
+  .moeve-cockpit-layout {
+    align-items: start;
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: minmax(0, 2fr) minmax(19rem, 1fr);
+  }
+
+  .moeve-cockpit-section {
+    border: 1px solid var(--moeve-border);
+  }
+
+  .moeve-cockpit-voyage-list {
+    display: grid;
+    gap: .65rem;
+  }
+
+  .moeve-cockpit-voyage {
+    align-items: flex-start;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: .4rem;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    padding: .8rem;
+  }
+
+  .moeve-cockpit-voyage-main {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .moeve-cockpit-voyage h3 {
+    margin: .2rem 0;
+  }
+
+  .moeve-cockpit-voyage p {
+    color: #475569;
+    margin: 0 0 .55rem;
+  }
+
+  .moeve-cockpit-voyage-kicker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem;
+  }
+
+  .moeve-cockpit-voyage-kicker span {
+    background: #e0f2fe;
+    border-radius: 999px;
+    color: #075985;
+    font-size: .72rem;
+    font-weight: 700;
+    padding: .15rem .4rem;
+  }
+
+  .moeve-progress {
+    background: #e2e8f0;
+    border-radius: 999px;
+    height: .42rem;
+    margin: .45rem 0;
+    overflow: hidden;
+  }
+
+  .moeve-progress span {
+    background: var(--moeve-covered);
+    display: block;
+    height: 100%;
+    width: var(--moeve-progress, 0%);
+  }
+
+  .moeve-cockpit-voyage-counts {
+    display: flex;
+    flex-wrap: wrap;
+    font-size: .78rem;
+    gap: .35rem .8rem;
+  }
+
+  .moeve-missing-info {
+    color: #9a3412;
+    font-size: .76rem;
+    margin-top: .45rem;
+  }
+
+  .moeve-cockpit-voyage-actions {
+    align-items: flex-end;
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    gap: .4rem;
+  }
+
+  .moeve-cockpit-application-list {
+    display: grid;
+    gap: .55rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .moeve-cockpit-application-list > li {
+    align-items: flex-start;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: .4rem;
+    display: flex;
+    gap: .6rem;
+    justify-content: space-between;
+    padding: .65rem;
+  }
+
+  .moeve-cockpit-application-list small {
+    color: #64748b;
+    display: block;
+    margin: -.15rem 0 .35rem;
+  }
+
+  .moeve-cockpit-empty {
+    border: 1px solid #cbd5e1;
+    border-radius: .4rem;
+    display: flex;
+    flex-direction: column;
+    padding: .85rem;
+  }
+
+  .moeve-cockpit-empty.is-success {
+    background: #f0fdf4;
+    border-color: #86efac;
+    color: #166534;
+  }
+
+  .moeve-cockpit-empty span {
+    margin-top: .2rem;
+  }
+
+  .moeve-cockpit-needs-wrap {
+    border: 1px solid var(--moeve-border);
+    overflow-x: auto;
+  }
+
+  .moeve-cockpit-needs {
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 0;
+    min-width: 65rem;
+    width: 100%;
+  }
+
+  .moeve-cockpit-needs th,
+  .moeve-cockpit-needs td {
+    background: #fff;
+    border-bottom: 1px solid #e2e8f0;
+    padding: .6rem;
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  .moeve-cockpit-needs thead th {
+    background: #f8fafc;
+  }
+
+  .moeve-cockpit-needs small {
+    color: #64748b;
+    display: block;
+    margin-top: .15rem;
+  }
+
+  .moeve-cockpit-shortcuts {
+    display: grid;
+    gap: .75rem;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    margin: 0 0 1rem;
+  }
+
+  .moeve-cockpit-shortcuts a {
+    background: #f8fafc;
+    border: 1px solid var(--moeve-border);
+    border-radius: .45rem;
+    color: #075985;
+    display: flex;
+    flex-direction: column;
+    padding: .8rem;
+    text-decoration: none;
+  }
+
+  .moeve-cockpit-shortcuts a:hover,
+  .moeve-cockpit-shortcuts a:focus {
+    background: #e0f2fe;
+    border-color: #38bdf8;
+  }
+
+  .moeve-cockpit-shortcuts span {
+    color: #475569;
+    font-size: .8rem;
+    margin-top: .2rem;
   }
 
   .moeve-voyage-list {
@@ -1279,6 +1770,22 @@
   }
 
   @media (max-width: 700px) {
+    .moeve-cockpit-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .moeve-cockpit-voyage,
+    .moeve-cockpit-application-list > li {
+      display: block;
+    }
+
+    .moeve-cockpit-voyage-actions {
+      align-items: flex-start;
+      flex-direction: row;
+      flex-wrap: wrap;
+      margin-top: .65rem;
+    }
+
     .moeve-voyage-people-grid {
       grid-template-columns: minmax(0, 1fr);
     }

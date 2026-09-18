@@ -101,6 +101,19 @@ class CRM_MoeveCrewing_Page_Overview extends CRM_Core_Page {
     $this->assign('roleRows', []);
     $this->assign('peopleRows', []);
     $this->assign('statusLegend', []);
+    $this->assign('cockpitVoyages', []);
+    $this->assign('cockpitNeeds', []);
+    $this->assign('cockpitApplications', []);
+    $this->assign('cockpitUrls', []);
+    $this->assign('cockpitSummary', [
+      'upcomingEventCount' => 0,
+      'requiredCount' => 0,
+      'confirmedCount' => 0,
+      'openCount' => 0,
+      'applicationCount' => 0,
+      'attentionEventCount' => 0,
+      'missingInfoEventCount' => 0,
+    ]);
     $this->assign('voyageEvents', []);
     $this->assign('voyages', []);
     $this->assign('voyageSummary', [
@@ -150,9 +163,25 @@ class CRM_MoeveCrewing_Page_Overview extends CRM_Core_Page {
       'coveredCount' => 0,
       'attentionCount' => 0,
     ]);
-    $this->assign('placeholder', $this->placeholder($activeView));
-
-    if ($activeView === 'year') {
+    if ($activeView === 'cockpit') {
+      try {
+        $data = $provider->loadCockpit($selectedYear);
+        foreach ($data as $name => $value) {
+          $this->assign($name, $value);
+        }
+      }
+      catch (\Throwable $exception) {
+        Civi::log()->error('Möwe Crewing cockpit failed: {message}', [
+          'message' => $exception->getMessage(),
+          'exception' => $exception,
+        ]);
+        $this->assign('pageError', E::ts(
+          'Das Crewing-Cockpit konnte nicht geladen werden: %1',
+          [1 => $exception->getMessage()]
+        ));
+      }
+    }
+    elseif ($activeView === 'year') {
       try {
         $data = $provider->load($selectedYear);
         foreach ($data as $name => $value) {
@@ -227,30 +256,6 @@ class CRM_MoeveCrewing_Page_Overview extends CRM_Core_Page {
     return $availableYears !== []
       ? (int) max($availableYears)
       : $currentYear;
-  }
-
-  /**
-   * @return array{title: string, text: string}
-   */
-  private function placeholder(string $view): array {
-    return match ($view) {
-      'cockpit' => [
-        'title' => E::ts('Crewing-Cockpit'),
-        'text' => E::ts('Hier folgen Kennzahlen, offene Aufgaben und die nächsten Törns.'),
-      ],
-      'voyages' => [
-        'title' => E::ts('Törnplanung'),
-        'text' => E::ts('Hier folgt die Detailplanung je Törn mit Bedarf und Besetzung.'),
-      ],
-      'applications' => [
-        'title' => E::ts('Bewerbungen'),
-        'text' => E::ts('Hier folgt der Arbeitsbereich zum Prüfen und Zuordnen von Bewerbungen.'),
-      ],
-      default => [
-        'title' => '',
-        'text' => '',
-      ],
-    };
   }
 
 }

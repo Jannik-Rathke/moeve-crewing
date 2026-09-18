@@ -99,6 +99,202 @@ final class YearOverviewProvider {
   }
 
   /**
+   * Build the operational start page for the selected planning year.
+   *
+   * @return array<string, mixed>
+   */
+  public function loadCockpit(int $year): array {
+    $voyageData = $this->loadVoyages($year);
+    $now = new \DateTimeImmutable('now');
+    $upcomingVoyages = [];
+    $openNeeds = [];
+    $openApplications = [];
+    $upcomingRequired = 0;
+    $upcomingConfirmed = 0;
+    $upcomingOpen = 0;
+    $attentionEventCount = 0;
+    $missingInfoEventCount = 0;
+
+    foreach ($voyageData['voyages'] as $voyage) {
+      $event = $voyage['event'];
+      $eventId = (int) $event['id'];
+      $voyageUrl = $this->overviewUrl(
+        'voyages',
+        $year,
+        ['event_id' => $eventId]
+      );
+      $applicationsUrl = $this->overviewUrl(
+        'applications',
+        $year,
+        ['event_id' => $eventId]
+      );
+
+      foreach ($voyage['applications'] as $application) {
+        $application['eventId'] = $eventId;
+        $application['eventTitle'] = (string) $event['title'];
+        $application['eventNumber'] = (string) $event['number'];
+        $application['eventDateLabel'] = (string) $event['dateLabel'];
+        $application['eventUrl'] = (string) $event['url'];
+        $openApplications[(int) $application['id']] = $application;
+      }
+
+      if (!$this->eventIsUpcoming($event, $now)) {
+        continue;
+      }
+
+      $missingInformation = [];
+      if ((string) $event['routeLabel'] === '') {
+        $missingInformation[] = 'Strecke';
+      }
+      if ((string) $event['crewOnBoardLabel'] === '') {
+        $missingInformation[] = 'Stamm an Bord';
+      }
+      if ((string) $event['crewOffBoardLabel'] === '') {
+        $missingInformation[] = 'Stamm von Bord';
+      }
+      if ((string) $event['organizerName'] === '') {
+        $missingInformation[] = 'Organisation';
+      }
+      if ($missingInformation !== []) {
+        $missingInfoEventCount++;
+      }
+
+      $openCount = (int) $voyage['summary']['openCount'];
+      $applicationCount = (int) $voyage['summary']['applicationCount'];
+      $provisionalCount = (int) $voyage['summary']['provisionalCount'];
+      if ($openCount === 0) {
+        $state = 'covered';
+        $stateLabel = 'Besetzung vollständig';
+      }
+      elseif ($applicationCount > 0 || $provisionalCount > 0) {
+        $state = 'attention';
+        $stateLabel = 'Entscheidungen offen';
+      }
+      else {
+        $state = 'gap';
+        $stateLabel = 'Crewbedarf offen';
+      }
+
+      if ($openCount > 0) {
+        $attentionEventCount++;
+      }
+      $upcomingRequired += (int) $voyage['summary']['requiredCount'];
+      $upcomingConfirmed += (int) $voyage['summary']['confirmedCount'];
+      $upcomingOpen += $openCount;
+      $requiredCount = (int) $voyage['summary']['requiredCount'];
+      $confirmedCount = (int) $voyage['summary']['confirmedCount'];
+      $completionPercent = $requiredCount > 0
+        ? min(100, (int) round(($confirmedCount / $requiredCount) * 100))
+        : 100;
+
+      $upcomingVoyages[] = [
+        'event' => $event,
+        'summary' => $voyage['summary'],
+        'state' => $state,
+        'stateLabel' => $stateLabel,
+        'completionPercent' => $completionPercent,
+        'timingLabel' => $this->eventTimingLabel($event, $now),
+        'missingInformation' => $missingInformation,
+        'missingInformationLabel' => implode(', ', $missingInformation),
+        'voyageUrl' => $voyageUrl,
+        'applicationsUrl' => $applicationsUrl,
+      ];
+
+      foreach ($voyage['demands'] as $demand) {
+        if ((int) $demand['openCount'] === 0) {
+          continue;
+        }
+        $openNeeds[] = [
+          'eventId' => $eventId,
+          'eventTitle' => (string) $event['title'],
+          'eventNumber' => (string) $event['number'],
+          'eventDateLabel' => (string) $event['dateLabel'],
+          'eventStartDate' => (string) $event['startDate'],
+          'roleLabel' => (string) $demand['label'],
+          'requiredCount' => (int) $demand['required'],
+          'confirmedCount' => (int) $demand['confirmedCount'],
+          'provisionalCount' => (int) $demand['provisionalCount'],
+          'applicationCount' => (int) $demand['applicationCount'],
+          'openCount' => (int) $demand['openCount'],
+          'state' => (string) $demand['state'],
+          'stateLabel' => (string) $demand['stateLabel'],
+          'voyageUrl' => $voyageUrl,
+          'applicationsUrl' => $applicationsUrl,
+        ];
+      }
+    }
+
+    usort(
+      $upcomingVoyages,
+      static fn(array $left, array $right): int => strcmp(
+        (string) $left['event']['startDate'],
+        (string) $right['event']['startDate']
+      )
+    );
+    usort(
+      $openNeeds,
+      static function (array $left, array $right): int {
+        $dateComparison = strcmp(
+          (string) $left['eventStartDate'],
+          (string) $right['eventStartDate']
+        );
+        if ($dateComparison !== 0) {
+          return $dateComparison;
+        }
+        $statePriority = ['gap' => 0, 'attention' => 1];
+        $stateComparison = ($statePriority[$left['state']] ?? 2)
+          <=> ($statePriority[$right['state']] ?? 2);
+        if ($stateComparison !== 0) {
+          return $stateComparison;
+        }
+        return (int) $right['openCount'] <=> (int) $left['openCount'];
+      }
+    );
+
+    $openApplications = array_values($openApplications);
+    usort(
+      $openApplications,
+      static function (array $left, array $right): int {
+        $dateComparison = strcmp(
+          (string) $right['registerDate'],
+          (string) $left['registerDate']
+        );
+        if ($dateComparison !== 0) {
+          return $dateComparison;
+        }
+        return strnatcasecmp(
+          (string) $left['displayName'],
+          (string) $right['displayName']
+        );
+      }
+    );
+
+    return [
+      'cockpitSummary' => [
+        'upcomingEventCount' => count($upcomingVoyages),
+        'requiredCount' => $upcomingRequired,
+        'confirmedCount' => $upcomingConfirmed,
+        'openCount' => $upcomingOpen,
+        'applicationCount' => count($openApplications),
+        'attentionEventCount' => $attentionEventCount,
+        'missingInfoEventCount' => $missingInfoEventCount,
+      ],
+      'cockpitVoyages' => array_slice($upcomingVoyages, 0, 6),
+      'cockpitNeeds' => array_slice($openNeeds, 0, 12),
+      'cockpitApplications' => array_slice($openApplications, 0, 8),
+      'cockpitUrls' => [
+        'voyages' => $this->overviewUrl('voyages', $year),
+        'applications' => $this->overviewUrl('applications', $year),
+        'year' => $this->overviewUrl('year', $year),
+        'setup' => \CRM_Utils_System::url(
+          'civicrm/admin/moeve-crewing/setup',
+          'reset=1'
+        ),
+      ],
+    ];
+  }
+
+  /**
    * Build the operational planning view for each voyage.
    *
    * @return array<string, mixed>
@@ -309,6 +505,9 @@ final class YearOverviewProvider {
           'requiredCount' => array_sum(array_column($demandRows, 'required')),
           'confirmedCount' => array_sum(
             array_column($demandRows, 'confirmedCount')
+          ),
+          'provisionalCount' => array_sum(
+            array_column($demandRows, 'provisionalCount')
           ),
           'openCount' => array_sum(array_column($demandRows, 'openCount')),
           'applicationCount' => count($openApplications),
@@ -1139,6 +1338,7 @@ final class YearOverviewProvider {
       'contactId' => $contactId,
       'displayName' => (string) $participant['displayName'],
       'status' => $participant['status'],
+      'registerDate' => (string) $participant['registerDate'],
       'registerDateLabel' => $this->formatDateTime(
         (string) $participant['registerDate']
       ),
@@ -1290,6 +1490,80 @@ final class YearOverviewProvider {
     }
 
     return is_numeric($value) ? max(0, (int) $value) : 0;
+  }
+
+  /**
+   * @param array<string, mixed> $event
+   */
+  private function eventIsUpcoming(
+    array $event,
+    \DateTimeImmutable $now
+  ): bool {
+    $comparisonValue = (string) (
+      $event['endDate'] !== ''
+        ? $event['endDate']
+        : $event['startDate']
+    );
+    if ($comparisonValue === '') {
+      return TRUE;
+    }
+
+    try {
+      return (new \DateTimeImmutable($comparisonValue)) >= $now;
+    }
+    catch (\Throwable) {
+      return TRUE;
+    }
+  }
+
+  /**
+   * @param array<string, mixed> $event
+   */
+  private function eventTimingLabel(
+    array $event,
+    \DateTimeImmutable $now
+  ): string {
+    try {
+      $startDate = new \DateTimeImmutable((string) $event['startDate']);
+      $endValue = (string) $event['endDate'];
+      $endDate = $endValue !== ''
+        ? new \DateTimeImmutable($endValue)
+        : NULL;
+    }
+    catch (\Throwable) {
+      return '';
+    }
+
+    if ($startDate <= $now && (!$endDate || $endDate >= $now)) {
+      return 'Läuft aktuell';
+    }
+
+    $today = $now->setTime(0, 0);
+    $startDay = $startDate->setTime(0, 0);
+    $days = (int) $today->diff($startDay)->format('%r%a');
+    return match ($days) {
+      0 => 'Heute',
+      1 => 'Morgen',
+      default => $days > 1 ? sprintf('In %d Tagen', $days) : '',
+    };
+  }
+
+  /**
+   * @param array<string, int|string> $additionalParameters
+   */
+  private function overviewUrl(
+    string $view,
+    int $year,
+    array $additionalParameters = []
+  ): string {
+    return \CRM_Utils_System::url(
+      'civicrm/moeve-crewing',
+      http_build_query(array_merge([
+        'reset' => 1,
+        'view' => $view,
+        'year' => $year,
+      ], $additionalParameters), '', '&', PHP_QUERY_RFC3986)
+    );
   }
 
   private function eventUrl(int $eventId): string {
