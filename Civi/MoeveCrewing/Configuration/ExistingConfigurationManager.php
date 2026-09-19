@@ -32,10 +32,12 @@ final class ExistingConfigurationManager {
    *   roleMinimumFields: array<string, string>,
    *   roleRows: array<int, array<string, string>>,
    *   statusRows: array<int, array<string, mixed>>,
+   *   statusOptions: array<string, string>,
    *   defaults: array<string, mixed>,
    *   statusErrors: array<int, string>,
    *   roleMappingErrors: array<int, string>,
-   *   statusColorErrors: array<int, string>
+   *   statusColorErrors: array<int, string>,
+   *   statusWorkflowErrors: array<int, string>
    * }
    */
   public static function getFormData(): array {
@@ -214,10 +216,12 @@ final class ExistingConfigurationManager {
       'roleMinimumFields' => $roleFormData['minimumFields'],
       'roleRows' => $roleFormData['rows'],
       'statusRows' => $statusFormData['rows'],
+      'statusOptions' => $statusFormData['options'],
       'defaults' => $defaults,
       'statusErrors' => self::getStatusErrors($defaults),
       'roleMappingErrors' => $roleFormData['errors'],
       'statusColorErrors' => $statusFormData['errors'],
+      'statusWorkflowErrors' => $statusFormData['workflowErrors'],
     ];
   }
 
@@ -228,6 +232,7 @@ final class ExistingConfigurationManager {
   public static function save(array $values): array {
     $configuration = self::validateIds($values);
     $statusColors = self::validateParticipantStatusColors($values);
+    $statusWorkflow = self::validateParticipantStatusWorkflow($values);
     $roleMapping = NULL;
 
     if (self::roleSourceMatches($values, $configuration['ids'])) {
@@ -249,6 +254,15 @@ final class ExistingConfigurationManager {
     $configuration['messages'][] = sprintf(
       'gespeichert: Farben für %d Teilnahmestatus',
       $statusColors['count']
+    );
+    \Civi::settings()->set(
+      ParticipantStatusWorkflow::SETTING_NAME,
+      $statusWorkflow['json']
+    );
+    $configuration['messages'][] = sprintf(
+      'gespeichert: Statusverwendung (%d für Crew, %d für Absagen)',
+      $statusWorkflow['assignedCount'],
+      $statusWorkflow['declinedCount']
     );
 
     if ($roleMapping !== NULL) {
@@ -1036,8 +1050,10 @@ final class ExistingConfigurationManager {
   /**
    * @return array{
    *   rows: array<int, array<string, mixed>>,
-   *   defaults: array<string, string>,
-   *   errors: array<int, string>
+   *   options: array<string, string>,
+   *   defaults: array<string, mixed>,
+   *   errors: array<int, string>,
+   *   workflowErrors: array<int, string>
    * }
    */
   private static function getParticipantStatusFormData(): array {
@@ -1067,17 +1083,33 @@ final class ExistingConfigurationManager {
       }
     }
 
-    $rows = [];
-    $defaults = [];
+    $statuses = [];
     foreach (
       ParticipantStatusType::get(FALSE)
         ->addSelect('id', 'name', 'label', 'class', 'is_active', 'weight')
         ->addOrderBy('weight', 'ASC')
         ->execute() as $status
     ) {
+      $status['isActive'] = !empty($status['is_active']);
+      $statuses[] = $status;
+    }
+    $workflow = ParticipantStatusWorkflow::resolve($statuses);
+    $assigned = array_fill_keys($workflow['assigned']['allowed'], TRUE);
+    $declined = array_fill_keys($workflow['declined']['allowed'], TRUE);
+
+    $rows = [];
+    $options = [];
+    $defaults = [
+      'assigned_status_default' => $workflow['assigned']['default'],
+      'declined_status_default' => $workflow['declined']['default'],
+    ];
+    foreach ($statuses as $status) {
       $name = (string) $status['name'];
       $class = (string) ($status['class'] ?? '');
-      $element = 'status_color_' . (string) $status['id'];
+      $statusId = (string) $status['id'];
+      $colorElement = 'status_color_' . $statusId;
+      $assignedElement = 'status_assigned_' . $statusId;
+      $declinedElement = 'status_declined_' . $statusId;
       $color = $configured[$name] ?? NULL;
       if (!is_string($color) || !preg_match('/^#[0-9A-Fa-f]{6}$/D', $color)) {
         if ($color !== NULL) {
@@ -1089,13 +1121,20 @@ final class ExistingConfigurationManager {
         $color = DefaultConfiguration::participantStatusColor($name, $class);
       }
 
-      $defaults[$element] = strtoupper($color);
+      $label = (string) ($status['label'] ?? $name);
+      $options[$name] = $label
+        . (!empty($status['is_active']) ? '' : ' (inaktiv)');
+      $defaults[$colorElement] = strtoupper($color);
+      $defaults[$assignedElement] = isset($assigned[$name]) ? 1 : 0;
+      $defaults[$declinedElement] = isset($declined[$name]) ? 1 : 0;
       $rows[] = [
         'name' => $name,
-        'label' => (string) ($status['label'] ?? $name),
+        'label' => $label,
         'class' => $class,
         'isActive' => !empty($status['is_active']),
-        'colorElement' => $element,
+        'colorElement' => $colorElement,
+        'assignedElement' => $assignedElement,
+        'declinedElement' => $declinedElement,
       ];
     }
 
@@ -1105,8 +1144,10 @@ final class ExistingConfigurationManager {
 
     return [
       'rows' => $rows,
+      'options' => $options,
       'defaults' => $defaults,
       'errors' => array_values(array_unique($errors)),
+      'workflowErrors' => $workflow['errors'],
     ];
   }
 
@@ -1158,6 +1199,43 @@ final class ExistingConfigurationManager {
       'json' => $json,
       'count' => count($colors),
     ];
+  }
+
+  /**
+   * @param array<string, mixed> $values
+   * @return array{json: string, assignedCount: int, declinedCount: int}
+   */
+  private static function validateParticipantStatusWorkflow(
+    array $values
+  ): array {
+    $statuses = [];
+    $assigned = [];
+    $declined = [];
+    foreach (
+      ParticipantStatusType::get(FALSE)
+        ->addSelect('id', 'name', 'label', 'class', 'is_active', 'weight')
+        ->addOrderBy('weight', 'ASC')
+        ->execute() as $status
+    ) {
+      $status['isActive'] = !empty($status['is_active']);
+      $statuses[] = $status;
+      $statusId = (string) $status['id'];
+      $name = (string) $status['name'];
+      if (!empty($values['status_assigned_' . $statusId])) {
+        $assigned[] = $name;
+      }
+      if (!empty($values['status_declined_' . $statusId])) {
+        $declined[] = $name;
+      }
+    }
+
+    return ParticipantStatusWorkflow::encode(
+      $statuses,
+      $assigned,
+      trim((string) ($values['assigned_status_default'] ?? '')),
+      $declined,
+      trim((string) ($values['declined_status_default'] ?? ''))
+    );
   }
 
   /**

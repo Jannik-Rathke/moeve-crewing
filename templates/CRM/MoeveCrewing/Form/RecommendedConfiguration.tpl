@@ -186,7 +186,7 @@
           {assign var=useElement value=$roleRow.useElement}
           {assign var=enabledElement value=$roleRow.enabledElement}
           {assign var=minimumElement value=$roleRow.minimumElement}
-          <tr>
+          <tr data-status-name="{$statusRow.name|escape}">
             <td>
               <strong>{$roleRow.label|escape}</strong><br>
               <small>{$roleRow.name|escape}</small>
@@ -200,15 +200,40 @@
     </table>
   {/if}
 
-  <h3>Statusfarben für die Jahresübersicht</h3>
+  <h3>Teilnahmestatus für Crewing und Jahresübersicht</h3>
   <div class="help">
     <p>
-      Die Personen-Jahresübersicht verwendet diese Farben für den jeweiligen
-      Teilnahmestatus. Die Zuordnung folgt dem technischen Statusnamen und bleibt
-      deshalb auch dann stabil, wenn Bezeichnungen übersetzt oder Datenbank-IDs
-      unterschiedlich sind. „Registriert“ ist standardmäßig blau.
+      Grundlage ist die zentrale CiviCRM-Liste der Teilnahmestatus. Legen Sie
+      hier ausdrücklich fest, welche Status die Sammelaktion für zugewiesene
+      Crew bzw. für Absagen anbieten darf und welcher Status vorausgewählt ist.
+      Nur die erstmalige Vorbelegung behandelt die CiviCRM-Klasse „Negative“
+      als Absage; nach dem Speichern wird die Klasse nicht mehr zur Entscheidung
+      verwendet.
+    </p>
+    <p>
+      Die Personen-Jahresübersicht verwendet außerdem die hinterlegte Farbe.
+      Alle Zuordnungen folgen dem technischen Statusnamen und bleiben daher bei
+      Änderungen der sichtbaren Bezeichnung sowie bei unterschiedlichen
+      Datenbank-IDs stabil.
     </p>
   </div>
+
+  {if $statusWorkflowIsValid}
+    <div class="messages status no-popup">
+      <div class="icon inform-icon"></div>
+      <p><strong>Statusworkflow gültig:</strong> Die auswählbaren Status und beide Standardwerte sind eindeutig konfiguriert.</p>
+    </div>
+  {else}
+    <div class="messages warning no-popup">
+      <div class="icon warning-icon"></div>
+      <p><strong>Statusworkflow verwendet vorläufig sichere Standardwerte:</strong></p>
+      <ul>
+        {foreach from=$statusWorkflowErrors item=statusWorkflowError}
+          <li>{$statusWorkflowError|escape}</li>
+        {/foreach}
+      </ul>
+    </div>
+  {/if}
 
   {if $statusColorsAreValid}
     <div class="messages status no-popup">
@@ -235,22 +260,51 @@
           <th>Technischer Name</th>
           <th>Klasse</th>
           <th>Verfügbarkeit</th>
+          <th>Für zugewiesene Crew</th>
+          <th>Für Absagen</th>
           <th>Farbe</th>
         </tr>
       </thead>
       <tbody>
         {foreach from=$statusRows item=statusRow}
           {assign var=colorElement value=$statusRow.colorElement}
+          {assign var=assignedElement value=$statusRow.assignedElement}
+          {assign var=declinedElement value=$statusRow.declinedElement}
           <tr>
             <td><strong>{$statusRow.label|escape}</strong></td>
             <td><code>{$statusRow.name|escape}</code></td>
             <td>{$statusRow.class|escape}</td>
             <td>{if $statusRow.isActive}aktiv{else}inaktiv{/if}</td>
+            <td class="moeve-workflow-assigned">{$form.$assignedElement.html}</td>
+            <td class="moeve-workflow-declined">{$form.$declinedElement.html}</td>
             <td>{$form.$colorElement.html}</td>
           </tr>
         {/foreach}
       </tbody>
     </table>
+
+    <div class="crm-section">
+      <div class="label">{$form.assigned_status_default.label}</div>
+      <div class="content">
+        {$form.assigned_status_default.html}
+        <div class="description">
+          Vorauswahl für „Alle Teilnahmestati der zugewiesenen Crew setzen“.
+          Der Status muss oben in der Spalte „Für zugewiesene Crew“ markiert sein.
+        </div>
+      </div>
+      <div class="clear"></div>
+    </div>
+    <div class="crm-section">
+      <div class="label">{$form.declined_status_default.label}</div>
+      <div class="content">
+        {$form.declined_status_default.html}
+        <div class="description">
+          Vorauswahl für „Alle Teilnahmestati der abgesagten Bewerbungen setzen“.
+          Der Status muss oben in der Spalte „Für Absagen“ markiert sein.
+        </div>
+      </div>
+      <div class="clear"></div>
+    </div>
   {/if}
 
   <h3>Empfohlene Möwe-Crewing-Konfiguration</h3>

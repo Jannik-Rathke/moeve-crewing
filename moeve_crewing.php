@@ -35,6 +35,29 @@ function moeve_crewing_civicrm_enable(): void {
 }
 
 /**
+ * Implements hook_civicrm_permission().
+ *
+ * @param array<string, array<string, mixed>> $permissions
+ */
+function moeve_crewing_civicrm_permission(array &$permissions): void {
+  $permissions['access Moeve Crewing'] = [
+    'label' => E::ts('Möwe Crewing ansehen'),
+    'description' => E::ts(
+      'Erlaubt den Zugriff auf Cockpit, Törnplanung, Bewerbungen und Jahresübersicht.'
+    ),
+    'implied_by' => ['administer CiviCRM'],
+  ];
+  $permissions['manage Moeve Crewing'] = [
+    'label' => E::ts('Möwe Crewing planen'),
+    'description' => E::ts(
+      'Erlaubt Crew-Zuweisungen und Änderungen von Teilnahmestatus in Möwe Crewing.'
+    ),
+    'implies' => ['access Moeve Crewing'],
+    'implied_by' => ['administer CiviCRM'],
+  ];
+}
+
+/**
  * Implements hook_civicrm_navigationMenu().
  *
  * @param array<int|string, mixed> $menu
@@ -43,8 +66,8 @@ function moeve_crewing_civicrm_navigationMenu(array &$menu): void {
   _moeve_crewing_civix_insert_navigation_menu($menu, 'Events', [
     'label' => E::ts('Möwe Crewing'),
     'name' => 'moeve_crewing_overview',
-    'url' => 'civicrm/moeve-crewing?reset=1&view=year',
-    'permission' => 'administer CiviCRM',
+    'url' => 'civicrm/moeve-crewing?reset=1&view=cockpit',
+    'permission' => 'access Moeve Crewing',
     'operator' => 'OR',
     'separator' => 0,
   ]);

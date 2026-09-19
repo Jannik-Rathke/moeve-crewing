@@ -397,6 +397,7 @@ final class YearOverviewProvider {
           }
           elseif (
             $participant['isCandidate']
+            && !$participant['isDeclined']
             && in_array(
               $roleValue,
               $participant['preferenceValues'],
@@ -463,6 +464,7 @@ final class YearOverviewProvider {
 
         if (
           $participant['isCandidate']
+          && !$participant['isDeclined']
           && (string) $participant['status']['class'] !== 'Negative'
         ) {
           $preferences = [];
@@ -571,8 +573,10 @@ final class YearOverviewProvider {
     foreach ($roles as $technicalName => $role) {
       $option = $roleOptions['byName'][$technicalName] ?? NULL;
       if ($option) {
-        $configuredRoleValues[(string) $option['value']] =
-          (string) $role['label'];
+        $configuredRoleValues[(string) $option['value']] = [
+          'label' => (string) $role['label'],
+          'choice' => 'role:' . $technicalName,
+        ];
       }
     }
 
@@ -596,20 +600,40 @@ final class YearOverviewProvider {
       }
 
       $preferenceLabels = [];
+      $preferenceChoices = [];
       foreach ($participant['preferenceValues'] as $value) {
         if (isset($configuredRoleValues[$value])) {
-          $preferenceLabels[] = $configuredRoleValues[$value];
+          $preferenceLabels[] = $configuredRoleValues[$value]['label'];
+          $preferenceChoices[] = $configuredRoleValues[$value];
         }
       }
       $preferenceLabels = array_values(array_unique($preferenceLabels));
+      $preferenceChoices = array_values(array_reduce(
+        $preferenceChoices,
+        static function (array $carry, array $choice): array {
+          $carry[(string) $choice['choice']] = $choice;
+          return $carry;
+        },
+        []
+      ));
 
       $assignedRoleLabels = [];
+      $assignedRoleChoices = [];
       foreach ($participant['roleValues'] as $value) {
         if (isset($configuredRoleValues[$value])) {
-          $assignedRoleLabels[] = $configuredRoleValues[$value];
+          $assignedRoleLabels[] = $configuredRoleValues[$value]['label'];
+          $assignedRoleChoices[] = $configuredRoleValues[$value];
         }
       }
       $assignedRoleLabels = array_values(array_unique($assignedRoleLabels));
+      $assignedRoleChoices = array_values(array_reduce(
+        $assignedRoleChoices,
+        static function (array $carry, array $choice): array {
+          $carry[(string) $choice['choice']] = $choice;
+          return $carry;
+        },
+        []
+      ));
 
       if (
         !$participant['isCandidate']
@@ -620,7 +644,11 @@ final class YearOverviewProvider {
       }
 
       $statusClass = (string) $participant['status']['class'];
-      if ($participant['isCandidate'] && $statusClass !== 'Negative') {
+      if (
+        $participant['isCandidate']
+        && !$participant['isDeclined']
+        && $statusClass !== 'Negative'
+      ) {
         $openCount++;
       }
       if ($assignedRoleLabels !== []) {
@@ -660,8 +688,17 @@ final class YearOverviewProvider {
         ),
         'status' => $participant['status'],
         'isCandidate' => (bool) $participant['isCandidate'],
+        'isDeclined' => (bool) $participant['isDeclined'],
         'preferences' => $preferenceLabels,
+        'preferenceChoices' => $preferenceChoices,
         'assignedRoles' => $assignedRoleLabels,
+        'assignedRoleChoices' => $assignedRoleChoices,
+        'initialChoice' => $participant['isDeclined']
+          ? 'declined'
+          : (string) ($assignedRoleChoices[0]['choice'] ?? ''),
+        'initialChoiceLabel' => $participant['isDeclined']
+          ? 'Abgesagt'
+          : (string) ($assignedRoleChoices[0]['label'] ?? ''),
         'registerDate' => (string) $participant['registerDate'],
         'registerDateLabel' => $this->formatDateTime(
           (string) $participant['registerDate']
@@ -1077,6 +1114,7 @@ final class YearOverviewProvider {
       ->addWhere('is_test', '=', FALSE)
       ->execute();
 
+    $declinedParticipantIds = $this->getDeclinedParticipantIds();
     $participants = [];
     foreach ($records as $record) {
       $statusId = (int) ($record['status_id'] ?? 0);
@@ -1118,6 +1156,7 @@ final class YearOverviewProvider {
           $roleValues,
           TRUE
         ),
+        'isDeclined' => isset($declinedParticipantIds[(int) $record['id']]),
       ];
     }
 
@@ -1179,6 +1218,7 @@ final class YearOverviewProvider {
 
           if (
             $participant['isCandidate']
+            && !$participant['isDeclined']
             && in_array($roleValue, $participant['preferenceValues'], TRUE)
           ) {
             $applications[$participant['id']] = TRUE;
@@ -1282,7 +1322,11 @@ final class YearOverviewProvider {
         }
 
         $roleLabels = $participant['roleLabels'];
-        if ($participant['isCandidate'] && $participant['preferenceValues'] !== []) {
+        if (
+          $participant['isCandidate']
+          && !$participant['isDeclined']
+          && $participant['preferenceValues'] !== []
+        ) {
           $preferences = [];
           foreach ($participant['preferenceValues'] as $value) {
             if (isset($roleOptions['byValue'][$value])) {
@@ -1556,6 +1600,15 @@ final class YearOverviewProvider {
     int $year,
     array $additionalParameters = []
   ): string {
+    if ($view === 'applications') {
+      return \CRM_Utils_System::url(
+        'civicrm/moeve-crewing/applications',
+        http_build_query(array_merge([
+          'reset' => 1,
+          'year' => $year,
+        ], $additionalParameters), '', '&', PHP_QUERY_RFC3986)
+      );
+    }
     return \CRM_Utils_System::url(
       'civicrm/moeve-crewing',
       http_build_query(array_merge([
@@ -1571,6 +1624,36 @@ final class YearOverviewProvider {
       'civicrm/event/manage/settings',
       'reset=1&action=update&id=' . $eventId
     );
+  }
+
+  /**
+   * @return array<int, bool>
+   */
+  private function getDeclinedParticipantIds(): array {
+    $json = trim((string) \Civi::settings()->get(
+      'moeve_crewing_declined_participants'
+    ));
+    if ($json === '') {
+      return [];
+    }
+    try {
+      $decoded = json_decode($json, TRUE, 512, JSON_THROW_ON_ERROR);
+    }
+    catch (\JsonException) {
+      return [];
+    }
+    if (!is_array($decoded)) {
+      return [];
+    }
+
+    $ids = [];
+    foreach (array_keys($decoded) as $participantId) {
+      $participantId = (int) $participantId;
+      if ($participantId > 0) {
+        $ids[$participantId] = TRUE;
+      }
+    }
+    return $ids;
   }
 
   private function setting(string $name, string $fallback): string {

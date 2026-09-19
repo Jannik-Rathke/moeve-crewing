@@ -13,7 +13,10 @@ class CRM_MoeveCrewing_Page_Overview extends CRM_Core_Page {
    * @throws \CRM_Core_Exception
    */
   public function run(): void {
-    if (!CRM_Core_Permission::check('administer CiviCRM')) {
+    if (
+      !CRM_Core_Permission::check('access Moeve Crewing')
+      && !CRM_Core_Permission::check('administer CiviCRM')
+    ) {
       throw new CRM_Core_Exception(
         E::ts('Sie dürfen die Crewing-Übersicht nicht aufrufen.')
       );
@@ -62,6 +65,23 @@ class CRM_MoeveCrewing_Page_Overview extends CRM_Core_Page {
       0
     ));
 
+    if ($activeView === 'applications') {
+      $parameters = [
+        'reset' => 1,
+        'year' => $selectedYear,
+      ];
+      if ($selectedEventId > 0) {
+        $parameters['event_id'] = $selectedEventId;
+      }
+      if ($selectedStatusId > 0) {
+        $parameters['status_id'] = $selectedStatusId;
+      }
+      CRM_Utils_System::redirect(CRM_Utils_System::url(
+        'civicrm/moeve-crewing/applications',
+        http_build_query($parameters, '', '&', PHP_QUERY_RFC3986)
+      ));
+    }
+
     $tabs = [];
     foreach ([
       'cockpit' => E::ts('Cockpit'),
@@ -73,14 +93,22 @@ class CRM_MoeveCrewing_Page_Overview extends CRM_Core_Page {
         'key' => $key,
         'label' => $label,
         'active' => $key === $activeView,
-        'url' => CRM_Utils_System::url(
-          'civicrm/moeve-crewing',
-          http_build_query([
-            'reset' => 1,
-            'view' => $key,
-            'year' => $selectedYear,
-          ], '', '&', PHP_QUERY_RFC3986)
-        ),
+        'url' => $key === 'applications'
+          ? CRM_Utils_System::url(
+            'civicrm/moeve-crewing/applications',
+            http_build_query([
+              'reset' => 1,
+              'year' => $selectedYear,
+            ], '', '&', PHP_QUERY_RFC3986)
+          )
+          : CRM_Utils_System::url(
+            'civicrm/moeve-crewing',
+            http_build_query([
+              'reset' => 1,
+              'view' => $key,
+              'year' => $selectedYear,
+            ], '', '&', PHP_QUERY_RFC3986)
+          ),
       ];
     }
 
@@ -93,6 +121,11 @@ class CRM_MoeveCrewing_Page_Overview extends CRM_Core_Page {
     CRM_Utils_System::setTitle($titles[$activeView]);
 
     $this->assign('activeView', $activeView);
+    $this->assign(
+      'canManage',
+      CRM_Core_Permission::check('manage Moeve Crewing')
+        || CRM_Core_Permission::check('administer CiviCRM')
+    );
     $this->assign('tabs', $tabs);
     $this->assign('selectedYear', $selectedYear);
     $this->assign('availableYears', $availableYears);

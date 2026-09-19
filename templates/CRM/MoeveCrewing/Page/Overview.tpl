@@ -129,7 +129,9 @@
                     <span class="moeve-state-label is-{$voyage.state|escape}">
                       {$voyage.stateLabel|escape}
                     </span>
-                    <a href="{$voyage.voyageUrl|escape}" class="crm-button">Planen</a>
+                    {if $canManage}
+                      <a href="{$voyage.voyageUrl|escape}" class="crm-button">Planen</a>
+                    {/if}
                     {if $voyage.summary.applicationCount}
                       <a href="{$voyage.applicationsUrl|escape}" class="crm-button">Bewerbungen</a>
                     {/if}
@@ -176,7 +178,9 @@
                       <span class="moeve-empty-value">Keine Wunschfunktion</span>
                     {/if}
                   </div>
-                  <a href="{$application.decisionUrl|escape}" class="crm-button">Entscheiden</a>
+                  {if $canManage}
+                    <a href="{$application.decisionUrl|escape}" class="crm-button">Entscheiden</a>
+                  {/if}
                 </li>
               {/foreach}
             </ul>
@@ -233,7 +237,7 @@
                     <td>
                       {if $need.applicationCount}
                         <a href="{$need.applicationsUrl|escape}" class="crm-button">Bewerbungen</a>
-                      {else}
+                      {elseif $canManage}
                         <a href="{$need.voyageUrl|escape}" class="crm-button">Planen</a>
                       {/if}
                     </td>
@@ -347,7 +351,9 @@
                       {$voyage.summary.applicationCount|escape} Bewerbungen
                     </span>
                   {/if}
-                  <a href="{$voyage.event.url|escape}" class="crm-button">Törn bearbeiten</a>
+                  {if $canManage}
+                    <a href="{$voyage.event.url|escape}" class="crm-button">Törn bearbeiten</a>
+                  {/if}
                 </div>
               </header>
 
@@ -429,7 +435,7 @@
                               {if $demand.confirmed}
                                 <div class="moeve-person-chips">
                                   {foreach from=$demand.confirmed item=person}
-                                    <a href="{$person.decisionUrl|escape}" class="moeve-person-chip">
+                                    <a href="{if $canManage}{$person.decisionUrl|escape}{else}{$person.contactUrl|escape}{/if}" class="moeve-person-chip">
                                       <i
                                         class="moeve-status-dot"
                                         style="--moeve-status-color: {$person.status.color|escape};"
@@ -446,7 +452,7 @@
                               {if $demand.provisional}
                                 <div class="moeve-person-chips">
                                   {foreach from=$demand.provisional item=person}
-                                    <a href="{$person.decisionUrl|escape}" class="moeve-person-chip">
+                                    <a href="{if $canManage}{$person.decisionUrl|escape}{else}{$person.contactUrl|escape}{/if}" class="moeve-person-chip">
                                       <i
                                         class="moeve-status-dot"
                                         style="--moeve-status-color: {$person.status.color|escape};"
@@ -463,7 +469,7 @@
                               {if $demand.applications}
                                 <div class="moeve-person-chips">
                                   {foreach from=$demand.applications item=person}
-                                    <a href="{$person.decisionUrl|escape}" class="moeve-person-chip is-application">
+                                    <a href="{if $canManage}{$person.decisionUrl|escape}{else}{$person.contactUrl|escape}{/if}" class="moeve-person-chip is-application">
                                       <i
                                         class="moeve-status-dot"
                                         style="--moeve-status-color: {$person.status.color|escape};"
@@ -519,7 +525,9 @@
                               ></i>
                               {$member.status.label|escape}
                             </span>
-                            <a href="{$member.decisionUrl|escape}" class="crm-button">Bearbeiten</a>
+                            {if $canManage}
+                              <a href="{$member.decisionUrl|escape}" class="crm-button">Bearbeiten</a>
+                            {/if}
                           </div>
                         </li>
                       {/foreach}
@@ -557,7 +565,9 @@
                               ></i>
                               {$application.status.label|escape}
                             </span>
-                            <a href="{$application.decisionUrl|escape}" class="crm-button">Entscheiden</a>
+                            {if $canManage}
+                              <a href="{$application.decisionUrl|escape}" class="crm-button">Entscheiden</a>
+                            {/if}
                           </div>
                         </li>
                       {/foreach}

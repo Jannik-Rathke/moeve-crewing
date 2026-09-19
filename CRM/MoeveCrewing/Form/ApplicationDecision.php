@@ -25,7 +25,10 @@ class CRM_MoeveCrewing_Form_ApplicationDecision extends CRM_Core_Form {
   public function preProcess(): void {
     parent::preProcess();
 
-    if (!CRM_Core_Permission::check('administer CiviCRM')) {
+    if (
+      !CRM_Core_Permission::check('manage Moeve Crewing')
+      && !CRM_Core_Permission::check('administer CiviCRM')
+    ) {
       throw new CRM_Core_Exception(
         E::ts('Sie dürfen Crewing-Bewerbungen nicht bearbeiten.')
       );

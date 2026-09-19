@@ -40,6 +40,14 @@ class CRM_MoeveCrewing_Form_RecommendedConfiguration extends CRM_Core_Form {
       $formData['statusColorErrors'] === []
     );
     $this->assign('statusColorErrors', $formData['statusColorErrors']);
+    $this->assign(
+      'statusWorkflowIsValid',
+      $formData['statusWorkflowErrors'] === []
+    );
+    $this->assign(
+      'statusWorkflowErrors',
+      $formData['statusWorkflowErrors']
+    );
 
     $emptyOption = ['' => E::ts('- bitte auswählen -')];
 
@@ -202,6 +210,18 @@ class CRM_MoeveCrewing_Form_RecommendedConfiguration extends CRM_Core_Form {
 
     foreach ($formData['statusRows'] as $statusRow) {
       $this->add(
+        'advcheckbox',
+        $statusRow['assignedElement'],
+        NULL,
+        E::ts('anbieten')
+      );
+      $this->add(
+        'advcheckbox',
+        $statusRow['declinedElement'],
+        NULL,
+        E::ts('anbieten')
+      );
+      $this->add(
         'text',
         $statusRow['colorElement'],
         NULL,
@@ -213,12 +233,28 @@ class CRM_MoeveCrewing_Form_RecommendedConfiguration extends CRM_Core_Form {
         ]
       );
     }
+    $this->add(
+      'select',
+      'assigned_status_default',
+      E::ts('Standardstatus für zugewiesene Crew'),
+      $formData['statusOptions'],
+      TRUE,
+      ['class' => 'crm-select2 huge']
+    );
+    $this->add(
+      'select',
+      'declined_status_default',
+      E::ts('Standardstatus für Absagen'),
+      $formData['statusOptions'],
+      TRUE,
+      ['class' => 'crm-select2 huge']
+    );
 
     $this->addRadio(
       'setup_action',
       E::ts('Auszuführende Aktion'),
       [
-        'save_existing' => E::ts('Zuordnungen und Statusfarben speichern'),
+        'save_existing' => E::ts('Zuordnungen, Statusworkflow und Statusfarben speichern'),
         'install_recommended' => E::ts('Empfohlene Konfiguration anlegen oder reparieren'),
       ],
       [],
