@@ -2,7 +2,7 @@
 <extension key="moeve_crewing" type="module">
   <file>moeve_crewing</file>
   <name>M&#xF6;we Crewing</name>
-  <description>Unterst&#xFC;tzt die Planung von Besatzungen, Rollen und Qualifikationen f&#xFC;r Veranstaltungen und T&#xF6;rns der Thor Heyerdahl.</description>
+  <description>Unterst&#xFC;tzt die Besatzungsplanung f&#xFC;r Veranstaltungen und T&#xF6;rns mit Crewbedarf, Bewerbungen, Rollen- und Statuszuweisungen sowie &#xDC;bersichten.</description>
   <license>AGPL-3.0</license>
   <authors>
     <author>
@@ -36,7 +36,7 @@
     <comments>Listed versions. For example, specify both "4" and "5".</comments>
     <ver>5</ver>
   </smarty_compatibility>
-  <comments>Alpha-Version f&#xFC;r die schrittweise Entwicklung der M&#xF6;we-Crewing-Funktionen.</comments>
+  <comments>Alpha-Version zum Testen der Crewing-Arbeitsabl&#xE4;ufe; vor produktiver Nutzung sind Sicherung und Pr&#xFC;fung erforderlich.</comments>
   <requires>
     <ext>civi_event</ext>
   </requires>
